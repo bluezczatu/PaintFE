@@ -630,7 +630,11 @@ impl KeyBindings {
 
     /// Set a binding
     pub fn set(&mut self, action: BindableAction, combo: KeyCombo) {
-        if combo.key.is_none() && combo.text_char.is_none() && !combo.ctrl && !combo.shift && !combo.alt
+        if combo.key.is_none()
+            && combo.text_char.is_none()
+            && !combo.ctrl
+            && !combo.shift
+            && !combo.alt
         {
             self.bindings.remove(&action);
             self.unbound.insert(action);

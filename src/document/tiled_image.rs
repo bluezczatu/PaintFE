@@ -1,1 +1,1 @@
-pub use crate::canvas::{TiledImage, CHUNK_SIZE};
+pub use crate::canvas::{CHUNK_SIZE, TiledImage};

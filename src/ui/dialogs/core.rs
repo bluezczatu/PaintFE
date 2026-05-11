@@ -11,12 +11,12 @@
 //   - Grid-aligned layouts using egui::Grid
 // ============================================================================
 
+use ::image::Rgba;
 use eframe::egui;
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
-use ::image::Rgba;
 
-use crate::ops::transform::Interpolation;
 use crate::canvas::{CanvasState, TiledImage};
+use crate::ops::transform::Interpolation;
 
 use super::effects::*;
 
@@ -282,10 +282,13 @@ fn paint_dialog_header_impl(
     if let Some(tex) = texture_icon {
         let sized = egui::load::SizedTexture::from_handle(tex);
         let img = egui::Image::from_texture(sized).fit_to_exact_size(egui::vec2(16.0, 16.0));
-        img.paint_at(ui, egui::Rect::from_center_size(
-            Pos2::new(text_pos.x + 8.0, text_pos.y),
-            egui::vec2(16.0, 16.0),
-        ));
+        img.paint_at(
+            ui,
+            egui::Rect::from_center_size(
+                Pos2::new(text_pos.x + 8.0, text_pos.y),
+                egui::vec2(16.0, 16.0),
+            ),
+        );
         painter.text(
             Pos2::new(text_pos.x + 22.0, text_pos.y),
             egui::Align2::LEFT_CENTER,
@@ -523,40 +526,41 @@ pub(crate) fn dialog_slider(
             egui::Vec2::new(146.0, 22.0),
             egui::Layout::left_to_right(egui::Align::Center),
             |ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
+                ui.spacing_mut().item_spacing.x = 2.0;
 
-            if ui.add_sized([20.0, 18.0], egui::Button::new("-")).clicked() {
-                *value = (*value - step).max(range_start);
-                changed = true;
-            }
+                if ui.add_sized([20.0, 18.0], egui::Button::new("-")).clicked() {
+                    *value = (*value - step).max(range_start);
+                    changed = true;
+                }
 
-            let dv = egui::DragValue::new(value)
-                .speed(step * 0.5)
-                .range(range)
-                .max_decimals(decimals);
-            let dv = if !suffix.is_empty() {
-                dv.suffix(suffix)
-            } else {
-                dv
-            };
-            if ui.add_sized([60.0, 18.0], dv).changed() {
-                changed = true;
-            }
+                let dv = egui::DragValue::new(value)
+                    .speed(step * 0.5)
+                    .range(range)
+                    .max_decimals(decimals);
+                let dv = if !suffix.is_empty() {
+                    dv.suffix(suffix)
+                } else {
+                    dv
+                };
+                if ui.add_sized([60.0, 18.0], dv).changed() {
+                    changed = true;
+                }
 
-            if ui.add_sized([20.0, 18.0], egui::Button::new("+")).clicked() {
-                *value = (*value + step).min(range_end);
-                changed = true;
-            }
+                if ui.add_sized([20.0, 18.0], egui::Button::new("+")).clicked() {
+                    *value = (*value + step).min(range_end);
+                    changed = true;
+                }
 
-            let is_default = (*value - default_value).abs() <= step.abs().max(0.0001) * 0.5;
-            let reset_resp = ui
-                .add_enabled(!is_default, egui::Button::new("↺"))
-                .on_hover_text("Reset to default");
-            if reset_resp.clicked() {
-                *value = default_value;
-                changed = true;
-            }
-        });
+                let is_default = (*value - default_value).abs() <= step.abs().max(0.0001) * 0.5;
+                let reset_resp = ui
+                    .add_enabled(!is_default, egui::Button::new("↺"))
+                    .on_hover_text("Reset to default");
+                if reset_resp.clicked() {
+                    *value = default_value;
+                    changed = true;
+                }
+            },
+        );
     });
     changed
 }
@@ -804,7 +808,6 @@ pub(crate) fn preview_controls(
 // ============================================================================
 // RESIZE IMAGE DIALOG
 // ============================================================================
-
 
 mod image_dialogs {
     use super::*;

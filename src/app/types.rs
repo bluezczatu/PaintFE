@@ -60,7 +60,10 @@ pub enum IoResult {
         format: SaveFormat,
     },
     /// Image decoding failed.
-    LoadFailed(String),
+    LoadFailed {
+        path: Option<std::path::PathBuf>,
+        error: String,
+    },
     /// Image save completed successfully.
     SaveComplete {
         project_index: usize,
@@ -228,6 +231,9 @@ pub struct PaintFEApp {
     ipc_receiver: mpsc::Receiver<PathBuf>,
     /// File paths to open on the first update() frame (from positional CLI args).
     pending_startup_files: Vec<PathBuf>,
+    /// Paths currently being opened asynchronously so duplicate drop events
+    /// cannot spawn duplicate projects before the first load completes.
+    pending_open_paths: HashSet<PathBuf>,
     /// True when startup files have been queued and the initial blank project
     /// should be auto-closed once the first real file finishes loading.
     close_initial_blank: bool,
@@ -248,6 +254,9 @@ pub struct PaintFEApp {
     palette_startup_target_pos: Option<(f32, f32)>,
     last_tool_settings_fingerprint: u64,
     last_window_state_fingerprint: u64,
+    last_window_state_observed_fingerprint: u64,
+    window_state_dirty: bool,
+    last_window_state_change_time: f64,
     last_paste_trigger_time: f64,
 }
 

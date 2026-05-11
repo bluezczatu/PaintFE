@@ -204,6 +204,7 @@ impl PaintFEApp {
             ipc_receiver,
             close_initial_blank: !startup_files.is_empty() && create_canvas_on_startup,
             pending_startup_files: startup_files,
+            pending_open_paths: HashSet::new(),
             prev_ctrl_c_down: false,
             prev_ctrl_x_down: false,
             prev_ctrl_v_down: false,
@@ -220,6 +221,9 @@ impl PaintFEApp {
             palette_startup_target_pos: None,
             last_tool_settings_fingerprint: 0,
             last_window_state_fingerprint: 0,
+            last_window_state_observed_fingerprint: 0,
+            window_state_dirty: false,
+            last_window_state_change_time: 0.0,
             last_paste_trigger_time: -1.0,
         };
 
@@ -283,6 +287,7 @@ impl PaintFEApp {
             app.recent_color_undo_count = undo_count;
         }
         app.last_window_state_fingerprint = app.compute_window_state_fingerprint();
+        app.last_window_state_observed_fingerprint = app.last_window_state_fingerprint;
         log_info!("Startup: PaintFE initialized (theme={:?} preset={:?} projects={})", app.theme.mode, app.settings.theme_preset, app.projects.len());
         app
     }
@@ -885,7 +890,7 @@ impl PaintFEApp {
         hasher.finish()
     }
 
-    fn persist_window_state_if_changed(&mut self) {
+    fn persist_window_state_if_changed(&mut self, current_time: f64, force: bool) {
         let resize_lock = match &self.active_dialog {
             ActiveDialog::ResizeImage(d) => d.lock_aspect,
             ActiveDialog::ResizeCanvas(d) => d.lock_aspect,
@@ -911,9 +916,26 @@ impl PaintFEApp {
 
         let fp = self.compute_window_state_fingerprint();
         if fp == self.last_window_state_fingerprint {
+            self.last_window_state_observed_fingerprint = fp;
+            self.window_state_dirty = false;
             return;
         }
+
+        if fp != self.last_window_state_observed_fingerprint {
+            self.last_window_state_observed_fingerprint = fp;
+            self.last_window_state_change_time = current_time;
+        }
+
+        if !self.window_state_dirty {
+            self.window_state_dirty = true;
+        }
+
+        if !force && current_time - self.last_window_state_change_time < 0.4 {
+            return;
+        }
+
         self.last_window_state_fingerprint = fp;
+        self.window_state_dirty = false;
         self.settings.save();
     }
 

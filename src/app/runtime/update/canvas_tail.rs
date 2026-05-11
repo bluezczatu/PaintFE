@@ -375,7 +375,8 @@ impl PaintFEApp {
                 self.settings.persist_window_pos = Some((outer_rect.min.x, outer_rect.min.y));
             }
         }
-        self.persist_window_state_if_changed();
+        let current_time = ctx.input(|i| i.time);
+        self.persist_window_state_if_changed(current_time, false);
 
         // --- Tool Hint (bottom-left status text) ---
         // Subtle text showing what the current tool does, visible at the bottom-left.

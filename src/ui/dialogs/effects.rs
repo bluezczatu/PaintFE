@@ -13,13 +13,13 @@ use eframe::egui;
 use egui::Color32;
 use image::RgbaImage;
 
+use crate::canvas::{CanvasState, TiledImage};
 use crate::ops::effects::{ColorFilterMode, GridStyle, HalftoneShape, NoiseType, OutlineMode};
 use crate::ui::dialogs::core::{
     DialogColors, DialogResult, accent_separator, contrast_text_color, dialog_footer,
     dialog_footer_with_reset, dialog_slider, numeric_field_with_buttons, paint_dialog_header,
     preview_controls, section_label,
 };
-use crate::canvas::{CanvasState, TiledImage};
 
 // Create common effect dialog fields
 macro_rules! effect_dialog_base {
@@ -130,7 +130,6 @@ effect_dialog_base!(BokehBlurDialog {
     radius: f32 = 0.0,
     advanced_blur: bool = false
 });
-
 
 mod blur {
     use super::*;

@@ -14,6 +14,8 @@ impl PaintFEApp {
         // --- Intercept OS window-close button ---
         // If the user hasn't yet confirmed the exit dialog, cancel the close and show it.
         if ctx.input(|i| i.viewport().close_requested()) {
+            let current_time = ctx.input(|i| i.time);
+            self.persist_window_state_if_changed(current_time, true);
             if self.force_exit {
                 // Already confirmed — let eframe proceed with the close.
             } else if self.settings.confirm_on_exit {
@@ -345,6 +347,8 @@ impl PaintFEApp {
                     path,
                     format,
                 } => {
+                    self.pending_open_paths
+                        .remove(&Self::normalize_open_path(&path));
                     let mut canvas_state = CanvasState::new(width, height);
                     if let Some(layer) = canvas_state.layers.first_mut() {
                         layer.pixels = tiled;
@@ -371,9 +375,13 @@ impl PaintFEApp {
                     self.canvas.gpu_clear_layers();
                     self.maybe_close_initial_blank();
                 }
-                IoResult::LoadFailed(msg) => {
-                    log_info!("FileIO: load failed — {}", msg);
-                    eprintln!("Failed to open image: {}", msg);
+                IoResult::LoadFailed { path, error } => {
+                    if let Some(path) = path {
+                        self.pending_open_paths
+                            .remove(&Self::normalize_open_path(&path));
+                    }
+                    log_info!("FileIO: load failed — {}", error);
+                    eprintln!("Failed to open image: {}", error);
                 }
                 IoResult::SaveComplete {
                     project_index,
@@ -412,6 +420,8 @@ impl PaintFEApp {
                     fps,
                     frame_count: _,
                 } => {
+                    self.pending_open_paths
+                        .remove(&Self::normalize_open_path(&path));
                     log_info!("FileIO: animated loaded — path={:?} format={:?} fps={}", path, format, fps);
                     let mut canvas_state = CanvasState::new(width, height);
                     if let Some(layer) = canvas_state.layers.first_mut() {
@@ -472,6 +482,8 @@ impl PaintFEApp {
                     mut canvas_state,
                     path,
                 } => {
+                    self.pending_open_paths
+                        .remove(&Self::normalize_open_path(&path));
                     log_info!("FileIO: pfe loaded — path={:?}", path);
                     canvas_state.composite_cache = None;
                     canvas_state.mark_dirty(None);

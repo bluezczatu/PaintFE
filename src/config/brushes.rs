@@ -289,7 +289,11 @@ impl Assets {
             Icon::Hidden,
             include_bytes!("../../assets/icons/ui/hidden.png"),
         );
-        self.load_icon(ctx, Icon::New, include_bytes!("../../assets/icons/ui/new.png"));
+        self.load_icon(
+            ctx,
+            Icon::New,
+            include_bytes!("../../assets/icons/ui/new.png"),
+        );
         self.load_icon(
             ctx,
             Icon::Open,
@@ -1197,7 +1201,8 @@ impl Assets {
                 color_image,
                 TextureOptions::LINEAR,
             );
-            self.custom_shape_textures.insert(shape.name.clone(), texture);
+            self.custom_shape_textures
+                .insert(shape.name.clone(), texture);
         }
     }
 
@@ -1205,18 +1210,33 @@ impl Assets {
         self.shape_textures.get(&kind)
     }
 
-    pub fn load_custom_shape(&mut self, ctx: &egui::Context, name: &str, category: &str, svg_path_data: &str) -> Result<(), String> {
+    pub fn load_custom_shape(
+        &mut self,
+        ctx: &egui::Context,
+        name: &str,
+        category: &str,
+        svg_path_data: &str,
+    ) -> Result<(), String> {
         let data = crate::ops::shapes::parse_custom_shape(name, category, svg_path_data)?;
-        let icon_pixels = crate::ops::shapes::render_custom_shape_icon(&data, 48, self.icons_inverted);
+        let icon_pixels =
+            crate::ops::shapes::render_custom_shape_icon(&data, 48, self.icons_inverted);
         let color_image = ColorImage::from_rgba_unmultiplied([48, 48], &icon_pixels);
-        let texture = ctx.load_texture(format!("custom_shape_{name}"), color_image, TextureOptions::LINEAR);
+        let texture = ctx.load_texture(
+            format!("custom_shape_{name}"),
+            color_image,
+            TextureOptions::LINEAR,
+        );
         self.custom_shape_data.retain(|s| s.name != name);
         self.custom_shape_textures.insert(name.to_string(), texture);
         self.custom_shape_data.push(data);
         for cat in &mut self.custom_shape_categories {
             cat.shapes.retain(|s| s != name);
         }
-        if let Some(cat) = self.custom_shape_categories.iter_mut().find(|c| c.name == category) {
+        if let Some(cat) = self
+            .custom_shape_categories
+            .iter_mut()
+            .find(|c| c.name == category)
+        {
             cat.shapes.push(name.to_string());
         } else {
             self.custom_shape_categories.push(CustomShapeCategory {
@@ -1224,7 +1244,8 @@ impl Assets {
                 shapes: vec![name.to_string()],
             });
         }
-        self.custom_shape_categories.retain(|c| !c.shapes.is_empty());
+        self.custom_shape_categories
+            .retain(|c| !c.shapes.is_empty());
         Ok(())
     }
 
@@ -1235,7 +1256,8 @@ impl Assets {
         for cat in &mut self.custom_shape_categories {
             cat.shapes.retain(|s| s != name);
         }
-        self.custom_shape_categories.retain(|c| !c.shapes.is_empty());
+        self.custom_shape_categories
+            .retain(|c| !c.shapes.is_empty());
         self.custom_shape_data.len() != before
     }
 
@@ -1253,7 +1275,13 @@ impl Assets {
 
     /// Load a brush tip from grayscale PNG bytes.
     /// Extracts the luminance/alpha as a single-channel mask, creates an icon texture.
-    pub fn load_brush_tip(&mut self, ctx: &egui::Context, name: &str, category: &str, png_data: &[u8]) {
+    pub fn load_brush_tip(
+        &mut self,
+        ctx: &egui::Context,
+        name: &str,
+        category: &str,
+        png_data: &[u8],
+    ) {
         match image::load_from_memory(png_data) {
             Ok(img) => {
                 let gray = img.to_luma8();
@@ -1370,7 +1398,9 @@ impl Assets {
             self.brush_tip_data.remove(idx);
             // Remove from category
             if let Some(cat_idx) = self.brush_tip_categories.iter().position(|c| c.name == cat) {
-                self.brush_tip_categories[cat_idx].tips.retain(|t| t != name);
+                self.brush_tip_categories[cat_idx]
+                    .tips
+                    .retain(|t| t != name);
                 if self.brush_tip_categories[cat_idx].tips.is_empty() {
                     self.brush_tip_categories.remove(cat_idx);
                 }
@@ -1987,7 +2017,6 @@ pub const BRUSH_SIZE_PRESETS: &[f32] = &[
 ];
 
 pub const TEXT_SIZE_PRESETS: &[f32] = &[
-    8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 32.0, 36.0, 48.0, 64.0, 72.0, 96.0,
-    128.0, 192.0, 256.0,
+    8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 32.0, 36.0, 48.0, 64.0, 72.0, 96.0, 128.0,
+    192.0, 256.0,
 ];
-

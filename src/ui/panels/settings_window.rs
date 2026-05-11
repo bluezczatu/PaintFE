@@ -1418,7 +1418,8 @@ impl SettingsWindow {
                 .add(egui::DragValue::new(&mut alpha).range(0..=255).speed(1))
                 .changed()
             {
-                *color = Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), alpha as u8);
+                *color =
+                    Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), alpha as u8);
                 changed = true;
             }
         });
@@ -1457,7 +1458,12 @@ impl SettingsWindow {
                     .add(egui::DragValue::new(&mut alpha).range(0..=255).speed(1))
                     .changed()
                 {
-                    *color = Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), alpha as u8);
+                    *color = Color32::from_rgba_premultiplied(
+                        color.r(),
+                        color.g(),
+                        color.b(),
+                        alpha as u8,
+                    );
                     *dirty = true;
                 }
                 if ui.small_button("\u{21BA}").on_hover_text("Reset").clicked() {
@@ -1969,9 +1975,7 @@ impl SettingsWindow {
                                 }
                             }
                             egui::Event::Key {
-                                key,
-                                pressed: true,
-                                ..
+                                key, pressed: true, ..
                             } if *key != egui::Key::Escape && key_name(*key) != "?" => {
                                 found = Some(KeyCombo {
                                     ctrl: false,
@@ -2084,15 +2088,13 @@ impl SettingsWindow {
                             .unwrap_or(false);
                         if ui
                             .add(
-                                egui::Button::new(
-                                    egui::RichText::new("Ctrl")
-                                        .size(9.0)
-                                        .color(if ctrl_active {
-                                            Color32::WHITE
-                                        } else {
-                                            Color32::GRAY
-                                        }),
-                                )
+                                egui::Button::new(egui::RichText::new("Ctrl").size(9.0).color(
+                                    if ctrl_active {
+                                        Color32::WHITE
+                                    } else {
+                                        Color32::GRAY
+                                    },
+                                ))
                                 .min_size(mod_btn_size)
                                 .fill(if ctrl_active {
                                     ui.visuals().selection.bg_fill
@@ -2117,15 +2119,13 @@ impl SettingsWindow {
                             .unwrap_or(false);
                         if ui
                             .add(
-                                egui::Button::new(
-                                    egui::RichText::new("Shft")
-                                        .size(9.0)
-                                        .color(if shift_active {
-                                            Color32::WHITE
-                                        } else {
-                                            Color32::GRAY
-                                        }),
-                                )
+                                egui::Button::new(egui::RichText::new("Shft").size(9.0).color(
+                                    if shift_active {
+                                        Color32::WHITE
+                                    } else {
+                                        Color32::GRAY
+                                    },
+                                ))
                                 .min_size(mod_btn_size)
                                 .fill(if shift_active {
                                     ui.visuals().selection.bg_fill
@@ -2150,15 +2150,13 @@ impl SettingsWindow {
                             .unwrap_or(false);
                         if ui
                             .add(
-                                egui::Button::new(
-                                    egui::RichText::new("Alt")
-                                        .size(9.0)
-                                        .color(if alt_active {
-                                            Color32::WHITE
-                                        } else {
-                                            Color32::GRAY
-                                        }),
-                                )
+                                egui::Button::new(egui::RichText::new("Alt").size(9.0).color(
+                                    if alt_active {
+                                        Color32::WHITE
+                                    } else {
+                                        Color32::GRAY
+                                    },
+                                ))
                                 .min_size(mod_btn_size)
                                 .fill(if alt_active {
                                     ui.visuals().selection.bg_fill

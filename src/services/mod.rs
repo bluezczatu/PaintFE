@@ -1,5 +1,5 @@
 pub mod clipboard;
-pub mod ipc;
 pub mod io;
+pub mod ipc;
 pub mod project;
 pub mod scripting;

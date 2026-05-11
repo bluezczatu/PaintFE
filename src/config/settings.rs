@@ -1171,7 +1171,11 @@ impl AppSettings {
             }
         }
         if let Err(e) = std::fs::write(&path, &content) {
-            eprintln!("[PaintFE] Failed to save settings to {}: {}", path.display(), e);
+            eprintln!(
+                "[PaintFE] Failed to save settings to {}: {}",
+                path.display(),
+                e
+            );
         }
     }
 
@@ -1230,12 +1234,12 @@ impl AppSettings {
                     };
                 }
                 "pixel_grid_outline_color" => {
-                    s.pixel_grid_outline_color = Self::str_to_color(val)
-                        .unwrap_or(Color32::from_black_alpha(90));
+                    s.pixel_grid_outline_color =
+                        Self::str_to_color(val).unwrap_or(Color32::from_black_alpha(90));
                 }
                 "pixel_grid_center_color" => {
-                    s.pixel_grid_center_color = Self::str_to_color(val)
-                        .unwrap_or(Color32::from_white_alpha(100));
+                    s.pixel_grid_center_color =
+                        Self::str_to_color(val).unwrap_or(Color32::from_white_alpha(100));
                 }
                 "selection_stripe_color" => {
                     s.selection_stripe_color = Self::str_to_color(val)
@@ -1428,11 +1432,8 @@ impl AppSettings {
                     if let Some((rest, b64)) = val.rsplit_once(',')
                         && let Some((name, cat)) = rest.split_once(',')
                     {
-                        s.custom_shapes.push((
-                            name.to_string(),
-                            cat.to_string(),
-                            b64.to_string(),
-                        ));
+                        s.custom_shapes
+                            .push((name.to_string(), cat.to_string(), b64.to_string()));
                     }
                 }
                 "persisted_fill_tolerance" => {

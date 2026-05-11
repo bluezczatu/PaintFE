@@ -593,7 +593,7 @@ impl Theme {
             floating_window_bg: Color32::from_rgba_unmultiplied(255, 255, 255, 248),
             tool_shelf_bg: Color32::from_rgb(255, 255, 255),
             tool_shelf_border: Color32::from_rgb(208, 208, 222), // matches light border_color
-            toolbar_bg: Color32::from_rgb(244, 244, 247), // #f4f4f7
+            toolbar_bg: Color32::from_rgb(244, 244, 247),        // #f4f4f7
             menu_bg: Color32::from_rgb(255, 255, 255),
 
             // Control-specific backgrounds

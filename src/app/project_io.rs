@@ -1,4 +1,8 @@
 impl PaintFEApp {
+    fn normalize_open_path(path: &std::path::Path) -> PathBuf {
+        std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    }
+
     fn percent_decode_path_component(input: &str) -> String {
         let bytes = input.as_bytes();
         let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -193,20 +197,20 @@ impl PaintFEApp {
     /// Open a file by path — creates a new project tab.
     /// Used by both "Open…" menu and drag-and-drop.
     fn open_file_by_path(&mut self, path: std::path::PathBuf, current_time: f64) {
+        let normalized_path = Self::normalize_open_path(&path);
+
         // Check if file is already open in another tab
-        if self
-            .projects
-            .iter()
-            .any(|p| p.path.as_ref().is_some_and(|pp| *pp == path))
-        {
-            // Already open — just switch to that tab
-            if let Some(idx) = self
-                .projects
-                .iter()
-                .position(|p| p.path.as_ref().is_some_and(|pp| *pp == path))
-            {
-                self.switch_to_project(idx);
-            }
+        if let Some(idx) = self.projects.iter().position(|p| {
+            p.path
+                .as_ref()
+                .map(|pp| Self::normalize_open_path(pp))
+                .is_some_and(|pp| pp == normalized_path)
+        }) {
+            self.switch_to_project(idx);
+            return;
+        }
+
+        if !self.pending_open_paths.insert(normalized_path) {
             return;
         }
 
@@ -227,10 +231,10 @@ impl PaintFEApp {
                     let _ = sender.send(IoResult::PfeLoaded { canvas_state, path });
                 }
                 Err(e) => {
-                    let _ = sender.send(IoResult::LoadFailed(format!(
-                        "Failed to open project: {}",
-                        e
-                    )));
+                    let _ = sender.send(IoResult::LoadFailed {
+                        path: Some(path),
+                        error: format!("Failed to open project: {}", e),
+                    });
                 }
             });
         } else {
@@ -308,12 +312,16 @@ impl PaintFEApp {
                                 }
                             }
                             Ok(_) => {
-                                let _ = sender.send(IoResult::LoadFailed(
-                                    "Animated file contains no frames".to_string(),
-                                ));
+                                let _ = sender.send(IoResult::LoadFailed {
+                                    path: Some(path.clone()),
+                                    error: "Animated file contains no frames".to_string(),
+                                });
                             }
                             Err(e) => {
-                                let _ = sender.send(IoResult::LoadFailed(e));
+                                let _ = sender.send(IoResult::LoadFailed {
+                                    path: Some(path.clone()),
+                                    error: e,
+                                });
                             }
                         }
                         return;
@@ -339,7 +347,10 @@ impl PaintFEApp {
                             });
                         }
                         Err(e) => {
-                            let _ = sender.send(IoResult::LoadFailed(format!("RAW: {}", e)));
+                            let _ = sender.send(IoResult::LoadFailed {
+                                path: Some(path),
+                                error: format!("RAW: {}", e),
+                            });
                         }
                     }
                     return;
@@ -348,20 +359,26 @@ impl PaintFEApp {
                 if let Ok((w, h)) = image::image_dimensions(&path)
                     && let Err(e) = crate::io::validate_open_dimensions(w, h)
                 {
-                    let _ = sender.send(IoResult::LoadFailed(e));
+                    let _ = sender.send(IoResult::LoadFailed {
+                        path: Some(path.clone()),
+                        error: e,
+                    });
                     return;
                 }
 
                 match image::open(&path) {
                     Ok(img) => {
                         if crate::io::validate_open_dimensions(img.width(), img.height()).is_err() {
-                            let _ = sender.send(IoResult::LoadFailed(format!(
-                                "Image size {}x{} exceeds maximum allowed {}x{}",
-                                img.width(),
-                                img.height(),
-                                crate::io::MAX_OPEN_IMAGE_DIM,
-                                crate::io::MAX_OPEN_IMAGE_DIM
-                            )));
+                            let _ = sender.send(IoResult::LoadFailed {
+                                path: Some(path.clone()),
+                                error: format!(
+                                    "Image size {}x{} exceeds maximum allowed {}x{}",
+                                    img.width(),
+                                    img.height(),
+                                    crate::io::MAX_OPEN_IMAGE_DIM,
+                                    crate::io::MAX_OPEN_IMAGE_DIM
+                                ),
+                            });
                             return;
                         }
                         let image = img.to_rgba8();
@@ -392,7 +409,10 @@ impl PaintFEApp {
                         });
                     }
                     Err(e) => {
-                        let _ = sender.send(IoResult::LoadFailed(format!("{}", e)));
+                        let _ = sender.send(IoResult::LoadFailed {
+                            path: Some(path),
+                            error: e.to_string(),
+                        });
                     }
                 }
             });

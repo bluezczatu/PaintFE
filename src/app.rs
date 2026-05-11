@@ -1,4 +1,3 @@
-use crate::log_info;
 use crate::assets::{
     AppSettings, Assets, BindableAction, Icon, KeyCombo, PixelGridMode, SettingsWindow,
 };
@@ -9,6 +8,7 @@ use crate::components::history::{
 };
 use crate::components::*;
 use crate::io::FileHandler;
+use crate::log_info;
 use crate::ops::clipboard::{ClipboardImageSource, PasteOverlay};
 use crate::ops::dialogs::{ActiveDialog, DialogResult};
 use crate::ops::scripting::{ScriptMessage, apply_canvas_ops};
@@ -17,7 +17,7 @@ use crate::signal_widgets;
 use crate::theme::{Theme, WindowVisibility};
 use eframe::egui;
 use image::RgbaImage;
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::mpsc;

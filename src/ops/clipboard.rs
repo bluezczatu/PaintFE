@@ -2,8 +2,8 @@
 // CLIPBOARD OPERATIONS — cut, copy, paste with manipulatable paste overlay
 // ============================================================================
 
-use crate::log_info;
 use crate::canvas::{CanvasState, TiledImage};
+use crate::log_info;
 use crate::ops::transform::Interpolation;
 use eframe::egui;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
@@ -118,21 +118,21 @@ pub fn get_clipboard_image_for_paste() -> Option<ClipboardImageForPaste> {
         if let Some(internal_payload) = &internal
             && images_match(&system_img, &internal_payload.image)
         {
-                return Some(ClipboardImageForPaste {
-                    image: internal_payload.image.clone(),
-                    source: internal_payload.source,
-                    origin_center: internal_payload.origin_center,
-                    overwrite_transparent_pixels: internal_payload.overwrite_transparent_pixels,
-                    overwrite_mask: internal_payload.overwrite_mask.clone(),
-                });
-            }
             return Some(ClipboardImageForPaste {
-                image: system_img,
-                source: ClipboardImageSource::External,
-                origin_center: None,
-                overwrite_transparent_pixels: true,
-                overwrite_mask: None,
+                image: internal_payload.image.clone(),
+                source: internal_payload.source,
+                origin_center: internal_payload.origin_center,
+                overwrite_transparent_pixels: internal_payload.overwrite_transparent_pixels,
+                overwrite_mask: internal_payload.overwrite_mask.clone(),
             });
+        }
+        return Some(ClipboardImageForPaste {
+            image: system_img,
+            source: ClipboardImageSource::External,
+            origin_center: None,
+            overwrite_transparent_pixels: true,
+            overwrite_mask: None,
+        });
     }
 
     internal.map(|payload| ClipboardImageForPaste {
@@ -521,7 +521,10 @@ fn read_image_from_clipboard_file_list() -> Option<RgbaImage> {
 /// Copy selected pixels from the active layer into the clipboard.
 /// Returns true if anything was copied.
 pub fn copy_selection(state: &CanvasState, transparent_cutout: bool) -> bool {
-    log_info!("Clipboard: copy selection (transparent_cutout={})", transparent_cutout);
+    log_info!(
+        "Clipboard: copy selection (transparent_cutout={})",
+        transparent_cutout
+    );
     let mask = match &state.selection_mask {
         Some(m) => m,
         None => return false,
@@ -602,7 +605,10 @@ pub fn copy_overlay(overlay: &PasteOverlay) -> bool {
 
 /// Cut = copy + delete selected pixels.
 pub fn cut_selection(state: &mut CanvasState, transparent_cutout: bool) -> bool {
-    log_info!("Clipboard: cut selection (transparent_cutout={})", transparent_cutout);
+    log_info!(
+        "Clipboard: cut selection (transparent_cutout={})",
+        transparent_cutout
+    );
     if !copy_selection(state, transparent_cutout) {
         return false;
     }
@@ -1013,7 +1019,12 @@ impl PasteOverlay {
         out
     }
 
-    fn overwrite_mask_allows(&self, local_x: f32, local_y: f32, scaled_mask: Option<&GrayImage>) -> bool {
+    fn overwrite_mask_allows(
+        &self,
+        local_x: f32,
+        local_y: f32,
+        scaled_mask: Option<&GrayImage>,
+    ) -> bool {
         let Some(mask) = scaled_mask else {
             return true;
         };
@@ -1036,9 +1047,10 @@ impl PasteOverlay {
             scaled_h,
             self.interpolation.to_filter(),
         );
-        let scaled_mask = self.overwrite_mask.as_ref().map(|mask| {
-            imageops::resize(mask, scaled_w, scaled_h, imageops::FilterType::Nearest)
-        });
+        let scaled_mask = self
+            .overwrite_mask
+            .as_ref()
+            .map(|mask| imageops::resize(mask, scaled_w, scaled_h, imageops::FilterType::Nearest));
 
         let cw = out.width();
         let ch = out.height();
@@ -1624,7 +1636,9 @@ impl PasteOverlay {
         let mouse_pos = match ui.input(|i| {
             i.pointer.interact_pos().or_else(|| {
                 i.events.iter().rev().find_map(|e| match e {
-                    egui::Event::PointerButton { pressed: true, pos, .. } => Some(*pos),
+                    egui::Event::PointerButton {
+                        pressed: true, pos, ..
+                    } => Some(*pos),
                     egui::Event::Touch {
                         phase: egui::TouchPhase::Start | egui::TouchPhase::Move,
                         pos,
@@ -1905,9 +1919,10 @@ impl PasteOverlay {
         let scaled_w = (src_w * self.scale_x).round().max(1.0) as u32;
         let scaled_h = (src_h * self.scale_y).round().max(1.0) as u32;
         let scaled = imageops::resize(&self.source, scaled_w, scaled_h, filter);
-        let scaled_mask = self.overwrite_mask.as_ref().map(|mask| {
-            imageops::resize(mask, scaled_w, scaled_h, imageops::FilterType::Nearest)
-        });
+        let scaled_mask = self
+            .overwrite_mask
+            .as_ref()
+            .map(|mask| imageops::resize(mask, scaled_w, scaled_h, imageops::FilterType::Nearest));
 
         // Compute tight bounding box of the rotated paste to limit iteration.
         let corners = self.corners_canvas();
@@ -2176,7 +2191,6 @@ impl PasteOverlay {
         &self.cached_preview.as_ref().unwrap().0
     }
 }
-
 
 /// Bilinear interpolation sample from an RgbaImage at fractional coords.
 /// Uses clamp-to-edge for out-of-bounds samples (matches GPU ClampToEdge

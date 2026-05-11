@@ -304,35 +304,16 @@ impl Canvas {
                     None // Force full readback on first frame or after resize
                 };
 
-                // On the very first dirty frame we won't have previous data yet,
-                // so fall back to the synchronous path to avoid a blank frame.
-                // Also use sync when no preview overlay is active (i.e. brush
-                // commit or filter apply) ÔÇö the preview layer masks the 1-frame
-                // async latency during interactive strokes, but without it the
-                // user would see a flicker (old composite without the committed
-                // pixels for one frame).
-                let use_sync = !have_existing_buffer || state.preview_layer.is_none();
-                let result = if use_sync {
-                    // Sync readback ÔÇö immediate result, no flicker
-                    // Cancel any pending async read to prevent stale data
-                    // from being applied on a subsequent frame.
-                    gpu.async_readback.cancel_pending();
-                    gpu.composite_dirty_readback(
-                        state.width,
-                        state.height,
-                        &layer_info,
-                        dr_for_readback,
-                    )
-                } else {
-                    // Interactive stroke with preview overlay ÔÇö async is safe
-                    // (preview masks the 1-frame latency)
-                    gpu.composite_dirty_readback_async(
-                        state.width,
-                        state.height,
-                        &layer_info,
-                        dr_for_readback,
-                    )
-                };
+                // Always use async readback so the UI thread never blocks on
+                // GPU completion during repaint-heavy events like live window
+                // resizing. While the async copy finishes we keep displaying
+                // the previous composite.
+                let result = gpu.composite_dirty_readback_async(
+                    state.width,
+                    state.height,
+                    &layer_info,
+                    dr_for_readback,
+                );
 
                 if let Some((pixels, rx, ry, rw, rh, is_full)) = result {
                     // Plan D: bytemuck zero-copy cast from &[u8] to &[Color32]
@@ -425,6 +406,10 @@ impl Canvas {
                             ));
                         }
                     }
+                } else if gpu.async_readback.read_pending {
+                    // First async frame after a dirty update: keep the last
+                    // composite visible and poll again next frame.
+                    ui.ctx().request_repaint();
                 }
                 state.dirty_rect = None;
             } else if gpu.async_readback.read_pending {

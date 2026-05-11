@@ -57,7 +57,11 @@ pub fn extract_svg_path_data(svg: &str) -> Result<String, String> {
     }
 }
 
-pub fn parse_custom_shape(name: &str, category: &str, svg_path_data: &str) -> Result<CustomShapeData, String> {
+pub fn parse_custom_shape(
+    name: &str,
+    category: &str,
+    svg_path_data: &str,
+) -> Result<CustomShapeData, String> {
     use kurbo::{BezPath, PathEl, Shape};
 
     let path = BezPath::from_svg(svg_path_data).map_err(|e| format!("Invalid SVG path: {e}"))?;
@@ -106,7 +110,12 @@ pub fn parse_custom_shape(name: &str, category: &str, svg_path_data: &str) -> Re
         category: category.to_string(),
         svg_path_data: svg_path_data.to_string(),
         polylines,
-        bounds: (bbox.x0 as f32, bbox.y0 as f32, bbox.x1 as f32, bbox.y1 as f32),
+        bounds: (
+            bbox.x0 as f32,
+            bbox.y0 as f32,
+            bbox.x1 as f32,
+            bbox.y1 as f32,
+        ),
     })
 }
 
@@ -121,7 +130,15 @@ pub fn render_custom_shape_icon(shape: &CustomShapeData, size: usize, dark: bool
                 for sx in 0..4 {
                     let lx = (x as f32 + (sx as f32 + 0.5) * 0.25) / size as f32 * 2.0 - 1.0;
                     let ly = (y as f32 + (sy as f32 + 0.5) * 0.25) / size as f32 * 2.0 - 1.0;
-                    cov += custom_shape_coverage_sample(&data, lx, ly, 0.82, 0.82, 0.04, ShapeFillMode::Filled);
+                    cov += custom_shape_coverage_sample(
+                        &data,
+                        lx,
+                        ly,
+                        0.82,
+                        0.82,
+                        0.04,
+                        ShapeFillMode::Filled,
+                    );
                 }
             }
             cov = (cov / 16.0).clamp(0.0, 1.0);
@@ -570,12 +587,7 @@ fn sdf_trapezoid(px: f32, py: f32, hx: f32, hy: f32) -> f32 {
 /// Both left and right sides slant equally; top edge is horizontal.
 fn sdf_parallelogram(px: f32, py: f32, hx: f32, hy: f32) -> f32 {
     let skew = hx * 0.3;
-    let verts = [
-        (-hx, -hy),
-        (hx, -hy),
-        (hx + skew, hy),
-        (-hx + skew, hy),
-    ];
+    let verts = [(-hx, -hy), (hx, -hy), (hx + skew, hy), (-hx + skew, hy)];
     sdf_convex_polygon(&verts, px, py)
 }
 
@@ -999,12 +1011,7 @@ fn parallelogram_outline_coverage(
     anti_alias: bool,
 ) -> f32 {
     let skew = hx * 0.3;
-    let verts = [
-        (-hx, -hy),
-        (hx, -hy),
-        (hx + skew, hy),
-        (-hx + skew, hy),
-    ];
+    let verts = [(-hx, -hy), (hx, -hy), (hx + skew, hy), (-hx + skew, hy)];
     let band = convex_polygon_miter_distance(&verts, px, py).abs() - outline_half;
     coverage_from_sdf(band, anti_alias)
 }
@@ -1049,20 +1056,21 @@ fn shape_local_corners(kind: ShapeKind, hw: f32, hh: f32) -> [(f32, f32); 4] {
     match kind {
         ShapeKind::Parallelogram => {
             let skew = hw * 0.3;
-            [
-                (-hw, -hh),
-                (hw, -hh),
-                (hw + skew, hh),
-                (-hw + skew, hh),
-            ]
+            [(-hw, -hh), (hw, -hh), (hw + skew, hh), (-hw + skew, hh)]
         }
-        _ => {
-            [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
-        }
+        _ => [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)],
     }
 }
 
-fn custom_shape_coverage(data: &CustomShapeRenderData, lx: f32, ly: f32, hx: f32, hy: f32, outline_width: f32, fill_mode: ShapeFillMode) -> f32 {
+fn custom_shape_coverage(
+    data: &CustomShapeRenderData,
+    lx: f32,
+    ly: f32,
+    hx: f32,
+    hy: f32,
+    outline_width: f32,
+    fill_mode: ShapeFillMode,
+) -> f32 {
     let samples = [
         (-0.25_f32, -0.25_f32),
         (0.25_f32, -0.25_f32),
@@ -1071,12 +1079,21 @@ fn custom_shape_coverage(data: &CustomShapeRenderData, lx: f32, ly: f32, hx: f32
     ];
     let mut total = 0.0;
     for (ox, oy) in samples {
-        total += custom_shape_coverage_sample(data, lx + ox, ly + oy, hx, hy, outline_width, fill_mode);
+        total +=
+            custom_shape_coverage_sample(data, lx + ox, ly + oy, hx, hy, outline_width, fill_mode);
     }
     total * 0.25
 }
 
-fn custom_shape_coverage_sample(data: &CustomShapeRenderData, lx: f32, ly: f32, hx: f32, hy: f32, outline_width: f32, fill_mode: ShapeFillMode) -> f32 {
+fn custom_shape_coverage_sample(
+    data: &CustomShapeRenderData,
+    lx: f32,
+    ly: f32,
+    hx: f32,
+    hy: f32,
+    outline_width: f32,
+    fill_mode: ShapeFillMode,
+) -> f32 {
     let (min_x, min_y, max_x, max_y) = data.bounds;
     let bw = (max_x - min_x).max(1.0);
     let bh = (max_y - min_y).max(1.0);
@@ -1090,7 +1107,11 @@ fn custom_shape_coverage_sample(data: &CustomShapeRenderData, lx: f32, ly: f32, 
         return fill_cov;
     }
     let edge_dist = distance_to_polylines(px, py, &data.polylines) / sx.max(sy);
-    let outline_cov = if edge_dist <= outline_width.max(1.0) { 1.0 } else { 0.0 };
+    let outline_cov = if edge_dist <= outline_width.max(1.0) {
+        1.0
+    } else {
+        0.0
+    };
     match fill_mode {
         ShapeFillMode::Outline => outline_cov,
         ShapeFillMode::Both => fill_cov.max(outline_cov),
@@ -1228,44 +1249,44 @@ pub fn rasterize_shape(
                 } else {
                     let d = shape_sdf(kind, lx, ly, hx, hy, corner_radius);
                     match fill_mode {
-                    ShapeFillMode::Filled => {
-                        let cov = coverage_from_sdf(d, aa);
-                        (primary, cov)
-                    }
-                    ShapeFillMode::Outline => {
-                        let outer = coverage_from_sdf(d, aa);
-                        let inner = coverage_from_sdf(d + outline_width, aa);
-                        let cov = (outer - inner).clamp(0.0, 1.0);
-                        (primary, cov)
-                    }
-                    ShapeFillMode::Both => {
-                        // Fill interior with secondary, outline with primary
-                        let fill_cov = coverage_from_sdf(d, aa);
-                        let outline_cov = (fill_cov - coverage_from_sdf(d + outline_width, aa))
-                            .clamp(0.0, 1.0);
-
-                        if outline_cov > 0.001 {
-                            // Outline on top
-                            let oa = outline_cov;
-                            let fa = fill_cov * (1.0 - oa);
-                            let total_a = oa + fa;
-                            if total_a > 0.0 {
-                                let r =
-                                    (primary[0] as f32 * oa + secondary[0] as f32 * fa) / total_a;
-                                let g =
-                                    (primary[1] as f32 * oa + secondary[1] as f32 * fa) / total_a;
-                                let b =
-                                    (primary[2] as f32 * oa + secondary[2] as f32 * fa) / total_a;
-                                let a =
-                                    (primary[3] as f32 * oa + secondary[3] as f32 * fa) / total_a;
-                                ([r as u8, g as u8, b as u8, a as u8], total_a)
-                            } else {
-                                ([0, 0, 0, 0], 0.0)
-                            }
-                        } else {
-                            (secondary, fill_cov)
+                        ShapeFillMode::Filled => {
+                            let cov = coverage_from_sdf(d, aa);
+                            (primary, cov)
                         }
-                    }
+                        ShapeFillMode::Outline => {
+                            let outer = coverage_from_sdf(d, aa);
+                            let inner = coverage_from_sdf(d + outline_width, aa);
+                            let cov = (outer - inner).clamp(0.0, 1.0);
+                            (primary, cov)
+                        }
+                        ShapeFillMode::Both => {
+                            // Fill interior with secondary, outline with primary
+                            let fill_cov = coverage_from_sdf(d, aa);
+                            let outline_cov = (fill_cov - coverage_from_sdf(d + outline_width, aa))
+                                .clamp(0.0, 1.0);
+
+                            if outline_cov > 0.001 {
+                                // Outline on top
+                                let oa = outline_cov;
+                                let fa = fill_cov * (1.0 - oa);
+                                let total_a = oa + fa;
+                                if total_a > 0.0 {
+                                    let r = (primary[0] as f32 * oa + secondary[0] as f32 * fa)
+                                        / total_a;
+                                    let g = (primary[1] as f32 * oa + secondary[1] as f32 * fa)
+                                        / total_a;
+                                    let b = (primary[2] as f32 * oa + secondary[2] as f32 * fa)
+                                        / total_a;
+                                    let a = (primary[3] as f32 * oa + secondary[3] as f32 * fa)
+                                        / total_a;
+                                    ([r as u8, g as u8, b as u8, a as u8], total_a)
+                                } else {
+                                    ([0, 0, 0, 0], 0.0)
+                                }
+                            } else {
+                                (secondary, fill_cov)
+                            }
+                        }
                     }
                 };
 
@@ -1363,41 +1384,41 @@ pub fn rasterize_shape_into(
                 } else {
                     let d = shape_sdf(kind, lx, ly, hx, hy, corner_radius);
                     match fill_mode {
-                    ShapeFillMode::Filled => {
-                        let cov = coverage_from_sdf(d, aa);
-                        (primary, cov)
-                    }
-                    ShapeFillMode::Outline => {
-                        let outer = coverage_from_sdf(d, aa);
-                        let inner = coverage_from_sdf(d + outline_width, aa);
-                        let cov = (outer - inner).clamp(0.0, 1.0);
-                        (primary, cov)
-                    }
-                    ShapeFillMode::Both => {
-                        let fill_cov = coverage_from_sdf(d, aa);
-                        let outline_cov = (fill_cov - coverage_from_sdf(d + outline_width, aa))
-                            .clamp(0.0, 1.0);
-                        if outline_cov > 0.001 {
-                            let oa = outline_cov;
-                            let fa = fill_cov * (1.0 - oa);
-                            let total_a = oa + fa;
-                            if total_a > 0.0 {
-                                let r =
-                                    (primary[0] as f32 * oa + secondary[0] as f32 * fa) / total_a;
-                                let g =
-                                    (primary[1] as f32 * oa + secondary[1] as f32 * fa) / total_a;
-                                let b =
-                                    (primary[2] as f32 * oa + secondary[2] as f32 * fa) / total_a;
-                                let a =
-                                    (primary[3] as f32 * oa + secondary[3] as f32 * fa) / total_a;
-                                ([r as u8, g as u8, b as u8, a as u8], total_a)
-                            } else {
-                                ([0, 0, 0, 0], 0.0)
-                            }
-                        } else {
-                            (secondary, fill_cov)
+                        ShapeFillMode::Filled => {
+                            let cov = coverage_from_sdf(d, aa);
+                            (primary, cov)
                         }
-                    }
+                        ShapeFillMode::Outline => {
+                            let outer = coverage_from_sdf(d, aa);
+                            let inner = coverage_from_sdf(d + outline_width, aa);
+                            let cov = (outer - inner).clamp(0.0, 1.0);
+                            (primary, cov)
+                        }
+                        ShapeFillMode::Both => {
+                            let fill_cov = coverage_from_sdf(d, aa);
+                            let outline_cov = (fill_cov - coverage_from_sdf(d + outline_width, aa))
+                                .clamp(0.0, 1.0);
+                            if outline_cov > 0.001 {
+                                let oa = outline_cov;
+                                let fa = fill_cov * (1.0 - oa);
+                                let total_a = oa + fa;
+                                if total_a > 0.0 {
+                                    let r = (primary[0] as f32 * oa + secondary[0] as f32 * fa)
+                                        / total_a;
+                                    let g = (primary[1] as f32 * oa + secondary[1] as f32 * fa)
+                                        / total_a;
+                                    let b = (primary[2] as f32 * oa + secondary[2] as f32 * fa)
+                                        / total_a;
+                                    let a = (primary[3] as f32 * oa + secondary[3] as f32 * fa)
+                                        / total_a;
+                                    ([r as u8, g as u8, b as u8, a as u8], total_a)
+                                } else {
+                                    ([0, 0, 0, 0], 0.0)
+                                }
+                            } else {
+                                (secondary, fill_cov)
+                            }
+                        }
                     }
                 };
 

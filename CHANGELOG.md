@@ -6,6 +6,14 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ---
 
+## [1.2.15] - 2026-05-11
+
+### Changed
+- Window maximize responsiveness -- Reduced maximize/resize stutter by throttling window-state persistence and keeping GPU compositing on the async path during repaint-heavy updates.
+
+### Fixed
+- Drag-and-drop duplicate opens -- Dropping an image into PaintFE no longer opens the same file twice in separate projects.
+
 ## [1.2.14] - 2026-05-01
 
 ### Added

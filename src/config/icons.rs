@@ -545,4 +545,3 @@ impl Icon {
         base.to_string()
     }
 }
-
