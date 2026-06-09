@@ -352,16 +352,15 @@ impl LayersPanel {
                                         }
                                     })
                                 });
-                            if let Some((insert_before_idx, folder_id)) = drop_target {
-                                if let Some(new_selection) = self.move_layer_group(
+                            if let Some((insert_before_idx, folder_id)) = drop_target
+                                && let Some(new_selection) = self.move_layer_group(
                                     move_indices,
                                     insert_before_idx,
                                     folder_id,
                                     canvas_state,
                                     history,
                                 ) {
-                                    self.selected_layers = new_selection.into_iter().collect();
-                                }
+                                self.selected_layers = new_selection.into_iter().collect();
                             }
                         } else if target != drag_didx {
                             // Convert display indices to layer indices (display is reversed)
@@ -1038,9 +1037,7 @@ impl LayersPanel {
         is_drop_target: bool,
         is_selected: bool,
     ) -> Option<FolderAction> {
-        let Some(folder) = canvas_state.layer_folder(folder_id).cloned() else {
-            return None;
-        };
+        let folder = canvas_state.layer_folder(folder_id).cloned()?;
         let mut action = None;
         let is_renaming = self.folder_rename_state.renaming_folder == Some(folder_id);
         let response = ui.interact(
@@ -1590,14 +1587,13 @@ impl LayersPanel {
                 context_action = Some(ContextAction::AddAdjustment);
                 ui.close();
             }
-            if canvas_state.layers[layer_idx].folder_id.is_none() {
-                if assets
+            if canvas_state.layers[layer_idx].folder_id.is_none()
+                && assets
                     .menu_item(ui, Icon::MenuFileOpen, "Add Folder")
                     .clicked()
-                {
-                    context_action = Some(ContextAction::AddFolder);
-                    ui.close();
-                }
+            {
+                context_action = Some(ContextAction::AddFolder);
+                ui.close();
             }
             if assets
                 .menu_item(ui, Icon::LayerDuplicate, &t!("layer.duplicate_layer"))
