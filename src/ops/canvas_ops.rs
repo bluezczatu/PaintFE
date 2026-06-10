@@ -299,7 +299,10 @@ pub fn add_layer(state: &mut CanvasState, history: &mut HistoryManager) {
     let idx = (state.active_layer_index + 1).min(state.layers.len());
     let name = format!("Layer {}", state.layers.len() + 1);
     let mut layer = Layer::new(name.clone(), state.width, state.height, Rgba([0, 0, 0, 0]));
-    layer.folder_id = state.layers[state.active_layer_index].folder_id;
+    layer.folder_id = state
+        .layers
+        .get(state.active_layer_index)
+        .and_then(|layer| layer.folder_id);
     state.layers.insert(idx, layer);
     state.active_layer_index = idx;
 
@@ -319,7 +322,10 @@ pub fn add_text_layer(state: &mut CanvasState, history: &mut HistoryManager) {
     let idx = (state.active_layer_index + 1).min(state.layers.len());
     let name = format!("Text Layer {}", state.layers.len() + 1);
     let mut layer = Layer::new_text(name.clone(), state.width, state.height);
-    layer.folder_id = state.layers[state.active_layer_index].folder_id;
+    layer.folder_id = state
+        .layers
+        .get(state.active_layer_index)
+        .and_then(|layer| layer.folder_id);
     state.layers.insert(idx, layer);
     state.active_layer_index = idx;
 
@@ -334,9 +340,9 @@ pub fn add_text_layer(state: &mut CanvasState, history: &mut HistoryManager) {
     state.mark_dirty(None);
 }
 
-/// Delete the active layer (must keep at least one layer).
+/// Delete the active layer.
 pub fn delete_layer(state: &mut CanvasState, history: &mut HistoryManager) {
-    if state.layers.len() <= 1 {
+    if state.layers.is_empty() {
         return;
     }
     let idx = state.active_layer_index;
@@ -355,6 +361,7 @@ pub fn delete_layer(state: &mut CanvasState, history: &mut HistoryManager) {
         pixel_format: removed.pixel_format,
         hdr_metadata: removed.hdr_metadata,
         source_metadata: removed.source_metadata,
+        webp_frame_compression: removed.webp_frame_compression,
         deep_pixels: removed.deep_pixels,
     })));
 
@@ -368,7 +375,10 @@ pub fn delete_layer(state: &mut CanvasState, history: &mut HistoryManager) {
         }
     }
 
-    if state.active_layer_index >= state.layers.len() {
+    if state.layers.is_empty() {
+        state.active_layer_index = 0;
+        state.edit_layer_mask = false;
+    } else if state.active_layer_index >= state.layers.len() {
         state.active_layer_index = state.layers.len() - 1;
     }
     state.mark_dirty(None);
@@ -399,6 +409,7 @@ pub fn duplicate_layer(state: &mut CanvasState, history: &mut HistoryManager) {
     dup.pixel_format = src.pixel_format;
     dup.hdr_metadata = src.hdr_metadata.clone();
     dup.source_metadata = src.source_metadata.clone();
+    dup.webp_frame_compression = src.webp_frame_compression;
     dup.deep_pixels = src.deep_pixels.clone();
 
     let new_idx = idx + 1;
@@ -413,6 +424,7 @@ pub fn duplicate_layer(state: &mut CanvasState, history: &mut HistoryManager) {
     let dup_pixel_format = dup.pixel_format;
     let dup_hdr_metadata = dup.hdr_metadata.clone();
     let dup_source_metadata = dup.source_metadata.clone();
+    let dup_webp_frame_compression = dup.webp_frame_compression;
     let dup_deep_pixels = dup.deep_pixels.clone();
 
     state.layers.insert(new_idx, dup);
@@ -432,6 +444,7 @@ pub fn duplicate_layer(state: &mut CanvasState, history: &mut HistoryManager) {
         pixel_format: dup_pixel_format,
         hdr_metadata: dup_hdr_metadata,
         source_metadata: dup_source_metadata,
+        webp_frame_compression: dup_webp_frame_compression,
         deep_pixels: dup_deep_pixels,
     })));
 

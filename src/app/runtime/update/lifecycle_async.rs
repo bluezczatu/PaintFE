@@ -366,6 +366,7 @@ impl PaintFEApp {
                         last_format: format,
                         last_quality: 90,
                         last_tiff_compression: TiffCompression::None,
+                        last_webp_lossless: true,
                         last_animated: false,
                         last_animation_fps: 10.0,
                         last_gif_colors: 256,
@@ -393,6 +394,7 @@ impl PaintFEApp {
                     path,
                     format,
                     quality,
+                    webp_lossless,
                     tiff_compression,
                     update_project_path,
                 } => {
@@ -406,6 +408,7 @@ impl PaintFEApp {
                         project.file_handler.current_path = Some(path.clone());
                         project.file_handler.last_format = format;
                         project.file_handler.last_quality = quality;
+                        project.file_handler.last_webp_lossless = webp_lossless;
                         project.file_handler.last_tiff_compression = tiff_compression;
                         if update_project_path {
                             project.path = Some(path);
@@ -451,6 +454,7 @@ impl PaintFEApp {
                         last_format: format,
                         last_quality: 90,
                         last_tiff_compression: TiffCompression::None,
+                        last_webp_lossless: true,
                         last_animated: true,
                         last_animation_fps: fps,
                         last_gif_colors: 256,
@@ -489,6 +493,8 @@ impl PaintFEApp {
                                 pixel_format: crate::canvas::PixelFormat::RgbaU8,
                                 hdr_metadata: crate::canvas::HdrMetadata::default(),
                                 source_metadata: crate::canvas::ImageMetadata::default(),
+                                webp_frame_compression:
+                                    crate::canvas::WebpFrameCompression::default(),
                                 deep_pixels: None,
                             };
                             project.canvas_state.layers.push(layer);
@@ -513,6 +519,7 @@ impl PaintFEApp {
                         last_format: SaveFormat::Pfe,
                         last_quality: 90,
                         last_tiff_compression: TiffCompression::None,
+                        last_webp_lossless: true,
                         last_animated: false,
                         last_animation_fps: 10.0,
                         last_gif_colors: 256,

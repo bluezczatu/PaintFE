@@ -267,6 +267,34 @@ impl LayersPanel {
                 canvas_state.layers[layer_idx].pixel_format = fmt;
             }
         });
+        ui.horizontal(|ui| {
+            ui.label("WebP frame");
+            let mut mode = canvas_state.layers[layer_idx].webp_frame_compression;
+            egui::ComboBox::from_id_salt(("webp_frame_mode_ls", layer_idx))
+                .selected_text(mode.label())
+                .width(120.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut mode,
+                        crate::canvas::WebpFrameCompression::Lossless,
+                        "Lossless",
+                    );
+                    ui.selectable_value(
+                        &mut mode,
+                        crate::canvas::WebpFrameCompression::Lossy,
+                        "Lossy",
+                    );
+                });
+            if mode != canvas_state.layers[layer_idx].webp_frame_compression {
+                canvas_state.layers[layer_idx].webp_frame_compression = mode;
+                canvas_state.mark_dirty(None);
+            }
+        });
+        ui.label(
+            egui::RichText::new("Only used for animated WebP export.")
+                .size(11.0)
+                .color(ui.visuals().weak_text_color()),
+        );
         let mut hdr_enabled = canvas_state.layers[layer_idx].hdr_metadata.enabled;
         if ui.checkbox(&mut hdr_enabled, "HDR metadata").changed() {
             canvas_state.layers[layer_idx].hdr_metadata.enabled = hdr_enabled;

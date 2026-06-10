@@ -6,6 +6,24 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ---
 
+## [1.3.1] - 2026-06-10
+
+### Added
+- Added WebP lossless export support, with static WebP now defaulting to lossless output.
+- Added animated WebP import/export support.
+- Added per-layer animated WebP frame compression metadata, allowing each exported frame to be saved as lossless or lossy.
+- Added a WebP frame compression option in Layer Options, persisted in PFE files and preserved when duplicating layers.
+- Added `--webp-lossy` CLI export option for lossy WebP output.
+
+### Changed
+- Save As WebP now exposes a lossless toggle and hides the quality slider when lossless mode is active.
+- Projects can now have zero layers; deleting the final layer leaves an empty gray workspace instead of forcing one layer to remain.
+- Layer actions that require an active layer are disabled when the layer stack is empty.
+
+### Fixed
+- Fixed brush, pencil, and eraser release flicker by flushing the committed stroke region into the visible composite before async GPU readback catches up.
+- Fixed add-layer and undo/redo paths so they behave correctly after the final layer has been deleted.
+
 ## [1.3.0] - 2026-06-10
 
 ### Added

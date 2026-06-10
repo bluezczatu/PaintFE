@@ -439,7 +439,9 @@ impl ToolsPanel {
                         canvas_state.clear_preview_state();
                         // Mark only stroke bounds dirty (not full canvas)
                         if let Some(ev) = stroke_event.as_ref() {
-                            canvas_state.mark_dirty(Some(ev.bounds.expand(12.0)));
+                            let dirty = ev.bounds.expand(12.0);
+                            canvas_state.request_commit_composite_flush(dirty);
+                            canvas_state.mark_dirty(Some(dirty));
                         } else {
                             self.mark_full_dirty(canvas_state);
                         }

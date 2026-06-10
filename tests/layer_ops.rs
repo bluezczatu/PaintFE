@@ -10,7 +10,7 @@ mod common;
 #[allow(unused_imports)]
 use common::*;
 use image::{Rgba, RgbaImage};
-use paintfe::canvas::{CanvasState, Layer, LayerFolder, TiledImage};
+use paintfe::canvas::{CanvasState, Layer, LayerFolder, TiledImage, WebpFrameCompression};
 use paintfe::components::history::{HistoryManager, SnapshotCommand};
 use paintfe::ops::canvas_ops;
 use paintfe::ops::transform::flatten_image;
@@ -67,12 +67,43 @@ fn delete_layer_removes_it() {
 }
 
 #[test]
-fn delete_last_layer_denied() {
+fn delete_last_layer_leaves_empty_stack() {
     let mut state = CanvasState::new(64, 64);
     let mut hist = history();
-    // Should not delete the only layer
+
     canvas_ops::delete_layer(&mut state, &mut hist);
-    assert_eq!(state.layers.len(), 1, "cannot delete the only layer");
+
+    assert!(state.layers.is_empty(), "last layer should be deletable");
+    assert_eq!(state.active_layer_index, 0);
+}
+
+#[test]
+fn undo_redo_delete_last_layer() {
+    let mut state = CanvasState::new(64, 64);
+    let mut hist = history();
+
+    canvas_ops::delete_layer(&mut state, &mut hist);
+    assert!(state.layers.is_empty());
+
+    hist.undo(&mut state);
+    assert_eq!(state.layers.len(), 1);
+    assert_eq!(state.active_layer_index, 0);
+
+    hist.redo(&mut state);
+    assert!(state.layers.is_empty());
+    assert_eq!(state.active_layer_index, 0);
+}
+
+#[test]
+fn add_layer_after_empty_stack() {
+    let mut state = CanvasState::new(64, 64);
+    let mut hist = history();
+
+    canvas_ops::delete_layer(&mut state, &mut hist);
+    canvas_ops::add_layer(&mut state, &mut hist);
+
+    assert_eq!(state.layers.len(), 1);
+    assert_eq!(state.active_layer_index, 0);
 }
 
 #[test]
@@ -93,6 +124,22 @@ fn duplicate_layer_copies_pixels() {
         *dup_px,
         Rgba([255, 0, 0, 255]),
         "duplicated layer should have same pixels"
+    );
+}
+
+#[test]
+fn duplicate_layer_copies_webp_frame_compression() {
+    let mut state = CanvasState::new(32, 32);
+    state.layers[0].webp_frame_compression = WebpFrameCompression::Lossy;
+    let mut hist = history();
+
+    state.active_layer_index = 0;
+    canvas_ops::duplicate_layer(&mut state, &mut hist);
+
+    assert_eq!(state.layers.len(), 2);
+    assert_eq!(
+        state.layers[1].webp_frame_compression,
+        WebpFrameCompression::Lossy
     );
 }
 

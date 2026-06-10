@@ -519,7 +519,8 @@ impl LayersPanel {
                         .menu_item(ui, Icon::MenuColorExposure, "Add Adjustment Layer")
                         .clicked()
                     {
-                        canvas_state.active_layer_index = canvas_state.layers.len() - 1;
+                        canvas_state.active_layer_index =
+                            canvas_state.layers.len().saturating_sub(1);
                         layer_to_add_adjustment = true;
                         ui.close();
                     }
@@ -986,7 +987,8 @@ impl LayersPanel {
                 }
                 if layer_to_add_top {
                     self.selected_folder = None;
-                    canvas_state.active_layer_index = canvas_state.layers.len() - 1;
+                    canvas_state.active_layer_index =
+                        canvas_state.layers.len().saturating_sub(1);
                     self.add_new_layer(canvas_state, history);
                 }
                 if layer_to_add_text {
@@ -994,7 +996,8 @@ impl LayersPanel {
                 }
                 if layer_to_add_text_top {
                     self.selected_folder = None;
-                    canvas_state.active_layer_index = canvas_state.layers.len() - 1;
+                    canvas_state.active_layer_index =
+                        canvas_state.layers.len().saturating_sub(1);
                     self.add_new_text_layer(canvas_state, history);
                 }
                 if layer_to_add_adjustment {
@@ -1005,7 +1008,8 @@ impl LayersPanel {
                 }
                 if layer_to_add_folder_top {
                     self.selected_folder = None;
-                    canvas_state.active_layer_index = canvas_state.layers.len() - 1;
+                    canvas_state.active_layer_index =
+                        canvas_state.layers.len().saturating_sub(1);
                     self.add_layer_folder(canvas_state, history);
                 }
                 if let Some((layer_idx, folder_id)) = layer_to_folder {
@@ -1602,7 +1606,7 @@ impl LayersPanel {
                 context_action = Some(ContextAction::Duplicate);
                 ui.close();
             }
-            if canvas_state.layers.len() > 1
+            if layer_idx < canvas_state.layers.len()
                 && assets
                     .menu_item(ui, Icon::LayerDelete, &t!("layer.delete_layer"))
                     .clicked()
@@ -2215,7 +2219,8 @@ impl LayersPanel {
             }
 
             // Delete Layer
-            let can_delete = canvas_state.layers.len() > 1;
+            let has_active_layer = canvas_state.active_layer_index < canvas_state.layers.len();
+            let can_delete = has_active_layer;
             if assets
                 .icon_button_enabled(ui, Icon::Delete, can_delete)
                 .clicked()
@@ -2225,7 +2230,11 @@ impl LayersPanel {
             }
 
             // Duplicate Layer
-            if assets.small_icon_button(ui, Icon::Duplicate).clicked() {
+            if assets
+                .icon_button_enabled(ui, Icon::Duplicate, has_active_layer)
+                .clicked()
+                && has_active_layer
+            {
                 self.duplicate_layer(canvas_state.active_layer_index, canvas_state, history);
             }
 
@@ -2250,7 +2259,11 @@ impl LayersPanel {
             }
 
             // Layer Options (settings)
-            if assets.small_icon_button(ui, Icon::Settings).clicked() {
+            if assets
+                .icon_button_enabled(ui, Icon::Settings, has_active_layer)
+                .clicked()
+                && has_active_layer
+            {
                 let idx = canvas_state.active_layer_index;
                 self.open_settings_for_layer(idx, canvas_state, LayerSettingsTab::General);
             }

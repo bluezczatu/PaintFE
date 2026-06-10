@@ -175,8 +175,15 @@ fn exports_16bit_png_and_reopens_exact_deep_values() {
 
     let path =
         std::env::temp_dir().join(format!("paintfe_export_16bit_{}.png", std::process::id()));
-    encode_canvas_state_and_write(&state, &path, SaveFormat::Png, 95, TiffCompression::None)
-        .unwrap();
+    encode_canvas_state_and_write(
+        &state,
+        &path,
+        SaveFormat::Png,
+        95,
+        TiffCompression::None,
+        true,
+    )
+    .unwrap();
 
     let loaded = load_image_sync(&path).unwrap();
     let _ = std::fs::remove_file(path);
@@ -238,8 +245,15 @@ fn edited_16bit_layer_exports_updated_deep_pixels() {
         "paintfe_edited_export_16bit_{}.png",
         std::process::id()
     ));
-    encode_canvas_state_and_write(&state, &path, SaveFormat::Png, 95, TiffCompression::None)
-        .unwrap();
+    encode_canvas_state_and_write(
+        &state,
+        &path,
+        SaveFormat::Png,
+        95,
+        TiffCompression::None,
+        true,
+    )
+    .unwrap();
     let loaded = load_image_sync(&path).unwrap();
     let _ = std::fs::remove_file(path);
 
@@ -293,8 +307,15 @@ fn exports_16bit_tiff_and_reopens_exact_deep_values() {
 
     let path =
         std::env::temp_dir().join(format!("paintfe_export_16bit_{}.tiff", std::process::id()));
-    encode_canvas_state_and_write(&state, &path, SaveFormat::Tiff, 95, TiffCompression::None)
-        .unwrap();
+    encode_canvas_state_and_write(
+        &state,
+        &path,
+        SaveFormat::Tiff,
+        95,
+        TiffCompression::None,
+        true,
+    )
+    .unwrap();
 
     let loaded = load_image_sync(&path).unwrap();
     let _ = std::fs::remove_file(path);
@@ -319,8 +340,15 @@ fn exports_fp32_hdr_tiff_with_float_samples() {
 
     let path =
         std::env::temp_dir().join(format!("paintfe_export_fp32_{}.tiff", std::process::id()));
-    encode_canvas_state_and_write(&state, &path, SaveFormat::Tiff, 95, TiffCompression::None)
-        .unwrap();
+    encode_canvas_state_and_write(
+        &state,
+        &path,
+        SaveFormat::Tiff,
+        95,
+        TiffCompression::None,
+        true,
+    )
+    .unwrap();
 
     let file = std::fs::File::open(&path).unwrap();
     let mut decoder = tiff::decoder::Decoder::new(std::io::BufReader::new(file)).unwrap();
@@ -354,8 +382,15 @@ fn exports_fp32_hdr_adjustment_layer_in_float_space() {
         "paintfe_export_fp32_adjusted_{}.tiff",
         std::process::id()
     ));
-    encode_canvas_state_and_write(&state, &path, SaveFormat::Tiff, 95, TiffCompression::None)
-        .unwrap();
+    encode_canvas_state_and_write(
+        &state,
+        &path,
+        SaveFormat::Tiff,
+        95,
+        TiffCompression::None,
+        true,
+    )
+    .unwrap();
 
     let file = std::fs::File::open(&path).unwrap();
     let mut decoder = tiff::decoder::Decoder::new(std::io::BufReader::new(file)).unwrap();

@@ -780,7 +780,7 @@ impl SaveFormat {
 
     /// Returns true if this format supports animated (multi-frame) output.
     pub fn supports_animation(&self) -> bool {
-        matches!(self, SaveFormat::Png | SaveFormat::Gif)
+        matches!(self, SaveFormat::Png | SaveFormat::Gif | SaveFormat::Webp)
     }
 
     fn all() -> &'static [SaveFormat] {
@@ -816,6 +816,7 @@ pub fn generate_preview(
     image: &RgbaImage,
     format: SaveFormat,
     quality: u8,
+    webp_lossless: bool,
 ) -> Option<PreviewResult> {
     let mut buffer = Vec::new();
 
@@ -862,13 +863,13 @@ pub fn generate_preview(
             })
         }
         SaveFormat::Webp => {
-            // WebP - use DynamicImage save for encoding
-            // Note: image crate's webp may not support quality directly
-            let dyn_img = DynamicImage::ImageRgba8(image.clone());
-            let mut cursor = Cursor::new(&mut buffer);
-            dyn_img
-                .write_to(&mut cursor, image::ImageFormat::WebP)
-                .ok()?;
+            let encoder = webp::Encoder::from_rgba(image.as_raw(), image.width(), image.height());
+            let encoded = if webp_lossless {
+                encoder.encode_lossless()
+            } else {
+                encoder.encode(quality.clamp(1, 100) as f32)
+            };
+            buffer.extend_from_slice(&encoded);
 
             // Decode back
             let decoded = image::load_from_memory(&buffer).ok()?;
@@ -1010,6 +1011,7 @@ pub struct SaveAction {
     pub path: PathBuf,
     pub format: SaveFormat,
     pub quality: u8,
+    pub webp_lossless: bool,
     pub tiff_compression: TiffCompression,
     /// Whether to save as animated (multi-frame)
     pub animated: bool,
@@ -1036,6 +1038,7 @@ pub struct SaveFileDialog {
     filename: String,
     format: SaveFormat,
     quality: u8,
+    webp_lossless: bool,
     tiff_compression: TiffCompression,
     target_directory: Option<PathBuf>,
 
@@ -1047,6 +1050,7 @@ pub struct SaveFileDialog {
     estimated_full_size: usize, // Estimated full-resolution file size
     last_preview_format: SaveFormat,
     last_preview_quality: u8,
+    last_preview_webp_lossless: bool,
     needs_preview_update: bool,
 
     // Interactive preview pan/zoom
@@ -1082,6 +1086,7 @@ impl Default for SaveFileDialog {
             filename: "untitled".to_string(),
             format: SaveFormat::Png,
             quality: 90,
+            webp_lossless: true,
             tiff_compression: TiffCompression::None,
             target_directory: None,
             source_thumbnail: None,
@@ -1091,6 +1096,7 @@ impl Default for SaveFileDialog {
             estimated_full_size: 0,
             last_preview_format: SaveFormat::Png,
             last_preview_quality: 90,
+            last_preview_webp_lossless: true,
             needs_preview_update: true,
             preview_zoom: 0.0,
             preview_pan: egui::Vec2::ZERO,
@@ -1123,6 +1129,7 @@ impl SaveFileDialog {
         self.preview_file_size = 0;
         self.estimated_full_size = 0;
         self.needs_preview_update = true;
+        self.webp_lossless = true;
         self.preview_zoom = 0.0;
         self.preview_pan = egui::Vec2::ZERO;
         self.preview_drag_start = None;
@@ -1207,15 +1214,19 @@ impl SaveFileDialog {
         // Check if we need to regenerate
         let settings_changed = self.format != self.last_preview_format
             || (self.format.supports_quality() && self.quality != self.last_preview_quality);
+        let webp_settings_changed = self.format == SaveFormat::Webp
+            && self.webp_lossless != self.last_preview_webp_lossless;
 
-        if !self.needs_preview_update && !settings_changed {
+        if !self.needs_preview_update && !settings_changed && !webp_settings_changed {
             return;
         }
 
         if let Some(thumbnail) = &self.source_thumbnail {
             let thumb_w = thumbnail.width();
             let thumb_h = thumbnail.height();
-            if let Some(preview_result) = generate_preview(thumbnail, self.format, self.quality) {
+            if let Some(preview_result) =
+                generate_preview(thumbnail, self.format, self.quality, self.webp_lossless)
+            {
                 // Update texture
                 let color_image = rgba_to_color_image(&preview_result.preview_image);
                 self.preview_texture =
@@ -1237,6 +1248,7 @@ impl SaveFileDialog {
 
         self.last_preview_format = self.format;
         self.last_preview_quality = self.quality;
+        self.last_preview_webp_lossless = self.webp_lossless;
         self.needs_preview_update = false;
     }
 
@@ -1557,19 +1569,35 @@ impl SaveFileDialog {
                             // ── QUALITY (JPEG / WebP) ─────────────────────────
                             if self.format.supports_quality() {
                                 accent_separator(ui, &colors);
-                                section_label(ui, &colors, "QUALITY");
-                                if ui.add(egui::Slider::new(&mut self.quality, 1..=100).suffix("%")).changed() {
-                                    ctx.request_repaint();
+                                if self.format == SaveFormat::Webp {
+                                    section_label(ui, &colors, "WEBP");
+                                    if ui.checkbox(&mut self.webp_lossless, "Lossless").changed() {
+                                        self.needs_preview_update = true;
+                                        ctx.request_repaint();
+                                    }
                                 }
-                                let hint = match self.quality {
-                                    1..=30 => "Very Low",
-                                    31..=50 => "Low",
-                                    51..=70 => "Medium",
-                                    71..=85 => "Good",
-                                    86..=95 => "High",
-                                    _ => "Maximum",
-                                };
-                                ui.label(egui::RichText::new(hint).size(11.0).color(colors.text_muted));
+                                if self.format != SaveFormat::Webp || !self.webp_lossless {
+                                    section_label(ui, &colors, "QUALITY");
+                                    if ui.add(egui::Slider::new(&mut self.quality, 1..=100).suffix("%")).changed() {
+                                        ctx.request_repaint();
+                                    }
+                                }
+                                if self.format != SaveFormat::Webp || !self.webp_lossless {
+                                    let hint = match self.quality {
+                                        1..=30 => "Very Low",
+                                        31..=50 => "Low",
+                                        51..=70 => "Medium",
+                                        71..=85 => "Good",
+                                        86..=95 => "High",
+                                        _ => "Maximum",
+                                    };
+                                    ui.label(egui::RichText::new(hint).size(11.0).color(colors.text_muted));
+                                } else {
+                                    ui.label(egui::RichText::new("Exact pixels, larger than lossy").size(11.0).color(colors.text_muted));
+                                }
+                                if self.format == SaveFormat::Webp && self.animated {
+                                    ui.label(egui::RichText::new("Animated WebP can use per-frame layer options.").size(11.0).color(colors.text_muted));
+                                }
                             }
 
                             // ── COMPRESSION (TIFF) ────────────────────────────
@@ -1680,6 +1708,7 @@ impl SaveFileDialog {
                                         path,
                                         format: self.format,
                                         quality: self.quality,
+                                        webp_lossless: self.webp_lossless,
                                         tiff_compression: self.tiff_compression,
                                         animated: self.animated && self.format.supports_animation(),
                                         animation_fps: self.animation_fps,

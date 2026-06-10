@@ -303,6 +303,7 @@ impl PaintFEApp {
                                 path,
                                 format: SaveFormat::Pfe,
                                 quality: 100,
+                                webp_lossless: true,
                                 tiff_compression: TiffCompression::None,
                                 update_project_path: true,
                             });
@@ -327,12 +328,20 @@ impl PaintFEApp {
                     let path = action.path.clone();
                     let format = action.format;
                     let quality = action.quality;
+                    let webp_lossless = action.webp_lossless;
                     let tiff_compression = action.tiff_compression;
                     let fps = action.animation_fps;
                     let gif_colors = action.gif_colors;
                     let gif_dither = action.gif_dither;
+                    let frame_modes: Vec<_> = project
+                        .canvas_state
+                        .layers
+                        .iter()
+                        .map(|l| l.webp_frame_compression)
+                        .collect();
 
                     project.file_handler.last_animated = true;
+                    project.file_handler.last_webp_lossless = webp_lossless;
                     project.file_handler.last_animation_fps = fps;
                     project.file_handler.last_gif_colors = gif_colors;
                     project.file_handler.last_gif_dither = gif_dither;
@@ -351,6 +360,13 @@ impl PaintFEApp {
                                 &frames, fps, gif_colors, gif_dither, &path,
                             ),
                             SaveFormat::Png => crate::io::encode_animated_png(&frames, fps, &path),
+                            SaveFormat::Webp => crate::io::encode_animated_webp(
+                                &frames,
+                                &frame_modes,
+                                fps,
+                                quality,
+                                &path,
+                            ),
                             _ => Err("Format does not support animation".to_string()),
                         };
                         match result {
@@ -360,6 +376,7 @@ impl PaintFEApp {
                                     path,
                                     format,
                                     quality,
+                                    webp_lossless,
                                     tiff_compression,
                                     update_project_path: true,
                                 });
@@ -379,9 +396,11 @@ impl PaintFEApp {
                     let path = action.path.clone();
                     let format = action.format;
                     let quality = action.quality;
+                    let webp_lossless = action.webp_lossless;
                     let tiff_compression = action.tiff_compression;
 
                     project.file_handler.last_animated = false;
+                    project.file_handler.last_webp_lossless = webp_lossless;
 
                     let sender = self.io_sender.clone();
                     if self.pending_io_ops == 0 {
@@ -396,6 +415,7 @@ impl PaintFEApp {
                             format,
                             quality,
                             tiff_compression,
+                            webp_lossless,
                         ) {
                             Ok(()) => {
                                 let _ = sender.send(IoResult::SaveComplete {
@@ -403,6 +423,7 @@ impl PaintFEApp {
                                     path,
                                     format,
                                     quality,
+                                    webp_lossless,
                                     tiff_compression,
                                     update_project_path: true,
                                 });

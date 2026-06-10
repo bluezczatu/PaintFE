@@ -103,6 +103,11 @@ impl LayersPanel {
         canvas_state: &mut CanvasState,
         history: &mut HistoryManager,
     ) {
+        if canvas_state.layers.is_empty() {
+            self.add_new_layer(canvas_state, history);
+            return;
+        }
+
         let mut snap = SnapshotCommand::new("Add Adjustment Layer".to_string(), canvas_state);
         let layer_num = canvas_state.layers.len() + 1;
         let layer_name = format!("Adjustment Layer {}", layer_num);
@@ -142,7 +147,7 @@ impl LayersPanel {
                     .iter()
                     .rposition(|layer| layer.folder_id == Some(id))
             })
-            .or(Some(canvas_state.active_layer_index));
+            .or_else(|| (!canvas_state.layers.is_empty()).then_some(canvas_state.active_layer_index));
         canvas_state.layer_folders.push(crate::canvas::LayerFolder {
             id,
             name,
@@ -421,7 +426,7 @@ impl LayersPanel {
         canvas_state: &mut CanvasState,
         history: &mut HistoryManager,
     ) {
-        if canvas_state.layers.len() <= 1 {
+        if layer_idx >= canvas_state.layers.len() {
             return;
         }
 
@@ -438,6 +443,7 @@ impl LayersPanel {
         let pixel_format = layer.pixel_format;
         let hdr_metadata = layer.hdr_metadata.clone();
         let source_metadata = layer.source_metadata.clone();
+        let webp_frame_compression = layer.webp_frame_compression;
         let deep_pixels = layer.deep_pixels.clone();
         let clear_selection =
             canvas_state.active_layer_index == layer_idx && canvas_state.selection_mask.is_some();
@@ -455,7 +461,10 @@ impl LayersPanel {
             canvas_state.text_editing_layer = Some(text_idx - 1);
         }
 
-        if canvas_state.active_layer_index >= canvas_state.layers.len() {
+        if canvas_state.layers.is_empty() {
+            canvas_state.active_layer_index = 0;
+            canvas_state.edit_layer_mask = false;
+        } else if canvas_state.active_layer_index >= canvas_state.layers.len() {
             canvas_state.active_layer_index = canvas_state.layers.len() - 1;
         } else if canvas_state.active_layer_index > layer_idx {
             canvas_state.active_layer_index -= 1;
@@ -487,6 +496,7 @@ impl LayersPanel {
                 pixel_format,
                 hdr_metadata,
                 source_metadata,
+                webp_frame_compression,
                 deep_pixels,
             })));
         }
@@ -524,6 +534,7 @@ impl LayersPanel {
         new_layer.pixel_format = source.pixel_format;
         new_layer.hdr_metadata = source.hdr_metadata.clone();
         new_layer.source_metadata = source.source_metadata.clone();
+        new_layer.webp_frame_compression = source.webp_frame_compression;
         new_layer.deep_pixels = source.deep_pixels.clone();
 
         let new_index = layer_idx + 1;
@@ -539,6 +550,7 @@ impl LayersPanel {
         let pixel_format = new_layer.pixel_format;
         let hdr_metadata = new_layer.hdr_metadata.clone();
         let source_metadata = new_layer.source_metadata.clone();
+        let webp_frame_compression = new_layer.webp_frame_compression;
         let deep_pixels = new_layer.deep_pixels.clone();
 
         // Insert above the duplicated layer
@@ -560,6 +572,7 @@ impl LayersPanel {
             pixel_format,
             hdr_metadata,
             source_metadata,
+            webp_frame_compression,
             deep_pixels,
         })));
 

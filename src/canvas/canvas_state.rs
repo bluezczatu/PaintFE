@@ -16,6 +16,7 @@ pub struct CanvasState {
     pub height: u32,
     pub composite_cache: Option<egui::TextureHandle>,
     pub dirty_rect: Option<egui::Rect>,
+    pub commit_composite_flush_rect: Option<egui::Rect>,
     pub show_pixel_grid: bool,             // Toggle for pixel grid overlay
     pub show_guidelines: bool,             // Toggle for center/thirds guidelines overlay
     pub mirror_mode: MirrorMode,           // Symmetry mirror mode
@@ -148,6 +149,7 @@ impl CanvasState {
             height,
             composite_cache: None,
             dirty_rect: None,
+            commit_composite_flush_rect: None,
             show_pixel_grid: true,  // Enable by default
             show_guidelines: false, // Disabled by default
             mirror_mode: MirrorMode::None,
@@ -1543,6 +1545,13 @@ impl CanvasState {
                 layer.invalidate_lod();
             }
         }
+    }
+
+    pub fn request_commit_composite_flush(&mut self, rect: egui::Rect) {
+        self.commit_composite_flush_rect = Some(match self.commit_composite_flush_rect {
+            Some(existing) => existing.union(rect),
+            None => rect,
+        });
     }
 
     /// Mark that only the preview layer changed.

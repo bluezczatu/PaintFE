@@ -326,6 +326,7 @@ pub enum LayerOperation {
         pixel_format: crate::canvas::PixelFormat,
         hdr_metadata: crate::canvas::HdrMetadata,
         source_metadata: crate::canvas::ImageMetadata,
+        webp_frame_compression: crate::canvas::WebpFrameCompression,
         deep_pixels: Option<crate::experimental::DeepRgbaBuffer>,
     },
     /// Layer was moved from one index to another
@@ -359,6 +360,7 @@ pub enum LayerOperation {
         pixel_format: crate::canvas::PixelFormat,
         hdr_metadata: crate::canvas::HdrMetadata,
         source_metadata: crate::canvas::ImageMetadata,
+        webp_frame_compression: crate::canvas::WebpFrameCompression,
         deep_pixels: Option<crate::experimental::DeepRgbaBuffer>,
     },
 }
@@ -383,8 +385,9 @@ impl Command for LayerOpCommand {
                 // Undo add = remove the layer
                 if *index < canvas.layers.len() {
                     canvas.layers.remove(*index);
-                    if canvas.active_layer_index >= canvas.layers.len() && !canvas.layers.is_empty()
-                    {
+                    if canvas.layers.is_empty() {
+                        canvas.active_layer_index = 0;
+                    } else if canvas.active_layer_index >= canvas.layers.len() {
                         canvas.active_layer_index = canvas.layers.len() - 1;
                     }
                 }
@@ -401,6 +404,7 @@ impl Command for LayerOpCommand {
                 pixel_format,
                 hdr_metadata,
                 source_metadata,
+                webp_frame_compression,
                 deep_pixels,
                 folder_id,
             } => {
@@ -421,6 +425,7 @@ impl Command for LayerOpCommand {
                 layer.pixel_format = *pixel_format;
                 layer.hdr_metadata = hdr_metadata.clone();
                 layer.source_metadata = source_metadata.clone();
+                layer.webp_frame_compression = *webp_frame_compression;
                 layer.deep_pixels = deep_pixels.clone();
 
                 let insert_idx = (*index).min(canvas.layers.len());
@@ -460,8 +465,9 @@ impl Command for LayerOpCommand {
                 // Undo duplicate = remove the duplicated layer
                 if *new_index < canvas.layers.len() {
                     canvas.layers.remove(*new_index);
-                    if canvas.active_layer_index >= canvas.layers.len() && !canvas.layers.is_empty()
-                    {
+                    if canvas.layers.is_empty() {
+                        canvas.active_layer_index = 0;
+                    } else if canvas.active_layer_index >= canvas.layers.len() {
                         canvas.active_layer_index = canvas.layers.len() - 1;
                     }
                 }
@@ -492,8 +498,9 @@ impl Command for LayerOpCommand {
                 // Redo delete = remove the layer again
                 if *index < canvas.layers.len() {
                     canvas.layers.remove(*index);
-                    if canvas.active_layer_index >= canvas.layers.len() && !canvas.layers.is_empty()
-                    {
+                    if canvas.layers.is_empty() {
+                        canvas.active_layer_index = 0;
+                    } else if canvas.active_layer_index >= canvas.layers.len() {
                         canvas.active_layer_index = canvas.layers.len() - 1;
                     }
                 }
@@ -540,6 +547,7 @@ impl Command for LayerOpCommand {
                 pixel_format,
                 hdr_metadata,
                 source_metadata,
+                webp_frame_compression,
                 deep_pixels,
                 folder_id,
                 ..
@@ -561,6 +569,7 @@ impl Command for LayerOpCommand {
                 layer.pixel_format = *pixel_format;
                 layer.hdr_metadata = hdr_metadata.clone();
                 layer.source_metadata = source_metadata.clone();
+                layer.webp_frame_compression = *webp_frame_compression;
                 layer.deep_pixels = deep_pixels.clone();
                 let insert_idx = (*new_index).min(canvas.layers.len());
                 canvas.layers.insert(insert_idx, layer);
@@ -802,6 +811,7 @@ pub struct LayerSnapshot {
     pub pixel_format: crate::canvas::PixelFormat,
     pub hdr_metadata: crate::canvas::HdrMetadata,
     pub source_metadata: crate::canvas::ImageMetadata,
+    pub webp_frame_compression: crate::canvas::WebpFrameCompression,
     pub deep_pixels: Option<crate::experimental::DeepRgbaBuffer>,
 }
 
@@ -830,6 +840,7 @@ impl CanvasSnapshot {
                     pixel_format: l.pixel_format,
                     hdr_metadata: l.hdr_metadata.clone(),
                     source_metadata: l.source_metadata.clone(),
+                    webp_frame_compression: l.webp_frame_compression,
                     deep_pixels: l.deep_pixels.clone(),
                 })
                 .collect(),
@@ -861,6 +872,7 @@ impl CanvasSnapshot {
             layer.pixel_format = snap.pixel_format;
             layer.hdr_metadata = snap.hdr_metadata.clone();
             layer.source_metadata = snap.source_metadata.clone();
+            layer.webp_frame_compression = snap.webp_frame_compression;
             layer.deep_pixels = snap.deep_pixels.clone();
             state.layers.push(layer);
         }
@@ -944,6 +956,8 @@ pub struct SingleLayerSnapshotCommand {
     after_hdr_metadata: crate::canvas::HdrMetadata,
     before_source_metadata: crate::canvas::ImageMetadata,
     after_source_metadata: crate::canvas::ImageMetadata,
+    before_webp_frame_compression: crate::canvas::WebpFrameCompression,
+    after_webp_frame_compression: crate::canvas::WebpFrameCompression,
     before_deep_pixels: Option<crate::experimental::DeepRgbaBuffer>,
     after_deep_pixels: Option<crate::experimental::DeepRgbaBuffer>,
 }
@@ -972,6 +986,7 @@ impl SingleLayerSnapshotCommand {
             before_pixel_format,
             before_hdr_metadata,
             before_source_metadata,
+            before_webp_frame_compression,
             before_deep_pixels,
         ) = if let Some(layer) = state.layers.get(safe_idx) {
             (
@@ -984,6 +999,7 @@ impl SingleLayerSnapshotCommand {
                 layer.pixel_format,
                 layer.hdr_metadata.clone(),
                 layer.source_metadata.clone(),
+                layer.webp_frame_compression,
                 layer.deep_pixels.clone(),
             )
         } else {
@@ -997,6 +1013,7 @@ impl SingleLayerSnapshotCommand {
                 crate::canvas::PixelFormat::RgbaU8,
                 crate::canvas::HdrMetadata::default(),
                 crate::canvas::ImageMetadata::default(),
+                crate::canvas::WebpFrameCompression::default(),
                 None,
             )
         };
@@ -1021,6 +1038,8 @@ impl SingleLayerSnapshotCommand {
             after_hdr_metadata: before_hdr_metadata,
             before_source_metadata: before_source_metadata.clone(),
             after_source_metadata: before_source_metadata,
+            before_webp_frame_compression,
+            after_webp_frame_compression: before_webp_frame_compression,
             before_deep_pixels: before_deep_pixels.clone(),
             after_deep_pixels: before_deep_pixels,
         }
@@ -1038,6 +1057,7 @@ impl SingleLayerSnapshotCommand {
             self.after_pixel_format = layer.pixel_format;
             self.after_hdr_metadata = layer.hdr_metadata.clone();
             self.after_source_metadata = layer.source_metadata.clone();
+            self.after_webp_frame_compression = layer.webp_frame_compression;
             self.after_deep_pixels = layer.deep_pixels.clone();
         }
     }
@@ -1055,6 +1075,7 @@ impl Command for SingleLayerSnapshotCommand {
             layer.pixel_format = self.before_pixel_format;
             layer.hdr_metadata = self.before_hdr_metadata.clone();
             layer.source_metadata = self.before_source_metadata.clone();
+            layer.webp_frame_compression = self.before_webp_frame_compression;
             layer.deep_pixels = self.before_deep_pixels.clone();
         }
         canvas.mark_dirty(None);
@@ -1073,6 +1094,7 @@ impl Command for SingleLayerSnapshotCommand {
             layer.pixel_format = self.after_pixel_format;
             layer.hdr_metadata = self.after_hdr_metadata.clone();
             layer.source_metadata = self.after_source_metadata.clone();
+            layer.webp_frame_compression = self.after_webp_frame_compression;
             layer.deep_pixels = self.after_deep_pixels.clone();
         }
         canvas.mark_dirty(None);

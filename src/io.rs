@@ -7,13 +7,14 @@ use image::codecs::tga::TgaEncoder;
 use image::{DynamicImage, ImageError, Rgba, RgbaImage};
 use rfd::FileDialog;
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::canvas::{
     BlendMode, CHUNK_SIZE, CanvasState, Layer, LayerContent, PixelFormat, TiledImage,
+    WebpFrameCompression,
 };
 use crate::components::dialogs::SaveFormat;
 use crate::experimental::{DeepRgbaBuffer, f16_bits_to_f32, reinhard_tone_map_rgba};
@@ -189,6 +190,8 @@ struct LayerDataV3 {
     pixel_format: crate::canvas::PixelFormat,
     hdr_metadata: crate::canvas::HdrMetadata,
     source_metadata: crate::canvas::ImageMetadata,
+    #[serde(default)]
+    webp_frame_compression: crate::canvas::WebpFrameCompression,
     deep_pixels: Option<crate::experimental::DeepRgbaBuffer>,
 }
 
@@ -250,6 +253,7 @@ pub fn build_pfe(state: &CanvasState) -> PfeData {
             || !l.source_metadata.png_text_chunks.is_empty()
             || !l.source_metadata.raw_png_chunks.is_empty()
             || l.source_metadata.source_format.is_some()
+            || l.webp_frame_compression != crate::canvas::WebpFrameCompression::default()
             || l.deep_pixels.is_some()
     });
     let has_text_layers = state
@@ -425,6 +429,7 @@ pub fn build_pfe_v3(state: &CanvasState) -> ProjectFileV3 {
                 pixel_format: layer.pixel_format,
                 hdr_metadata: layer.hdr_metadata.clone(),
                 source_metadata: layer.source_metadata.clone(),
+                webp_frame_compression: layer.webp_frame_compression,
                 deep_pixels: layer.deep_pixels.clone(),
             }
         })
@@ -717,6 +722,7 @@ pub fn load_image_sync(path: &Path) -> Result<CanvasState, String> {
         pixel_format,
         hdr_metadata,
         source_metadata: metadata_for_path(path),
+        webp_frame_compression: WebpFrameCompression::default(),
         deep_pixels,
     };
 
@@ -730,6 +736,7 @@ pub fn load_image_sync(path: &Path) -> Result<CanvasState, String> {
         edit_layer_mask: false,
         composite_cache: None,
         dirty_rect: None,
+        commit_composite_flush_rect: None,
         show_pixel_grid: true,
         show_guidelines: false,
         mirror_mode: crate::canvas::MirrorMode::None,
@@ -851,6 +858,7 @@ fn load_pfe_v3(raw: &[u8]) -> Result<CanvasState, PfeError> {
             pixel_format: ld.pixel_format,
             hdr_metadata: ld.hdr_metadata,
             source_metadata: ld.source_metadata,
+            webp_frame_compression: ld.webp_frame_compression,
             deep_pixels: ld.deep_pixels,
         });
     }
@@ -870,6 +878,7 @@ fn load_pfe_v3(raw: &[u8]) -> Result<CanvasState, PfeError> {
         edit_layer_mask: false,
         composite_cache: None,
         dirty_rect: None,
+        commit_composite_flush_rect: None,
         show_pixel_grid: true,
         show_guidelines: false,
         mirror_mode: crate::canvas::MirrorMode::None,
@@ -999,6 +1008,7 @@ fn load_pfe_v2(raw: &[u8]) -> Result<CanvasState, PfeError> {
             pixel_format: crate::canvas::PixelFormat::RgbaU8,
             hdr_metadata: crate::canvas::HdrMetadata::default(),
             source_metadata: crate::canvas::ImageMetadata::default(),
+            webp_frame_compression: WebpFrameCompression::default(),
             deep_pixels: None,
         });
     }
@@ -1019,6 +1029,7 @@ fn load_pfe_v2(raw: &[u8]) -> Result<CanvasState, PfeError> {
         edit_layer_mask: false,
         composite_cache: None,
         dirty_rect: None,
+        commit_composite_flush_rect: None,
         show_pixel_grid: true,
         show_guidelines: false,
         mirror_mode: crate::canvas::MirrorMode::None,
@@ -1118,6 +1129,7 @@ fn load_pfe_v1(raw: &[u8]) -> Result<CanvasState, PfeError> {
             pixel_format: crate::canvas::PixelFormat::RgbaU8,
             hdr_metadata: crate::canvas::HdrMetadata::default(),
             source_metadata: crate::canvas::ImageMetadata::default(),
+            webp_frame_compression: WebpFrameCompression::default(),
             deep_pixels: None,
         });
     }
@@ -1138,6 +1150,7 @@ fn load_pfe_v1(raw: &[u8]) -> Result<CanvasState, PfeError> {
         edit_layer_mask: false,
         composite_cache: None,
         dirty_rect: None,
+        commit_composite_flush_rect: None,
         show_pixel_grid: true,
         show_guidelines: false,
         mirror_mode: crate::canvas::MirrorMode::None,
@@ -1234,6 +1247,7 @@ fn load_pfe_v0(raw: &[u8]) -> Result<CanvasState, PfeError> {
             pixel_format: crate::canvas::PixelFormat::RgbaU8,
             hdr_metadata: crate::canvas::HdrMetadata::default(),
             source_metadata: crate::canvas::ImageMetadata::default(),
+            webp_frame_compression: WebpFrameCompression::default(),
             deep_pixels: None,
         });
     }
@@ -1254,6 +1268,7 @@ fn load_pfe_v0(raw: &[u8]) -> Result<CanvasState, PfeError> {
         edit_layer_mask: false,
         composite_cache: None,
         dirty_rect: None,
+        commit_composite_flush_rect: None,
         show_pixel_grid: true,
         show_guidelines: false,
         mirror_mode: crate::canvas::MirrorMode::None,
@@ -1539,6 +1554,7 @@ pub fn encode_prepared_and_write(
     format: SaveFormat,
     quality: u8,
     tiff_compression: TiffCompression,
+    webp_lossless: bool,
 ) -> Result<(), ImageError> {
     match (&image, format) {
         (
@@ -1569,7 +1585,14 @@ pub fn encode_prepared_and_write(
     }
 
     let rgba8 = image.rgba8();
-    encode_and_write(&rgba8, path, format, quality, tiff_compression)
+    encode_and_write(
+        &rgba8,
+        path,
+        format,
+        quality,
+        tiff_compression,
+        webp_lossless,
+    )
 }
 
 pub fn encode_canvas_state_and_write(
@@ -1578,6 +1601,7 @@ pub fn encode_canvas_state_and_write(
     format: SaveFormat,
     quality: u8,
     tiff_compression: TiffCompression,
+    webp_lossless: bool,
 ) -> Result<(), ImageError> {
     encode_prepared_and_write(
         prepare_export_image(state),
@@ -1585,6 +1609,7 @@ pub fn encode_canvas_state_and_write(
         format,
         quality,
         tiff_compression,
+        webp_lossless,
     )
 }
 
@@ -1666,6 +1691,7 @@ pub fn encode_and_write(
     format: SaveFormat,
     quality: u8,
     tiff_compression: TiffCompression,
+    webp_lossless: bool,
 ) -> Result<(), ImageError> {
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
@@ -1691,8 +1717,7 @@ pub fn encode_and_write(
             )?;
         }
         SaveFormat::Webp => {
-            let dyn_img = DynamicImage::ImageRgba8(image.clone());
-            dyn_img.save(path)?;
+            encode_static_webp(image, &mut writer, quality, webp_lossless)?;
         }
         SaveFormat::Bmp => {
             let encoder = BmpEncoder::new(&mut writer);
@@ -1780,6 +1805,22 @@ pub fn encode_and_write(
     Ok(())
 }
 
+fn encode_static_webp<W: Write>(
+    image: &RgbaImage,
+    writer: &mut W,
+    quality: u8,
+    lossless: bool,
+) -> Result<(), ImageError> {
+    let encoder = webp::Encoder::from_rgba(image.as_raw(), image.width(), image.height());
+    let bytes = if lossless {
+        encoder.encode_lossless()
+    } else {
+        encoder.encode(quality.clamp(1, 100) as f32)
+    };
+    writer.write_all(&bytes)?;
+    Ok(())
+}
+
 // ============================================================================
 // FILE HANDLER
 // ============================================================================
@@ -1793,6 +1834,8 @@ pub struct FileHandler {
     pub last_quality: u8,
     /// Last used TIFF compression setting
     pub last_tiff_compression: TiffCompression,
+    /// Last used WebP compression mode for static exports
+    pub last_webp_lossless: bool,
     /// Whether last save was animated
     pub last_animated: bool,
     /// Last used animation FPS
@@ -1816,6 +1859,7 @@ impl FileHandler {
             last_format: SaveFormat::Png,
             last_quality: 90,
             last_tiff_compression: TiffCompression::None,
+            last_webp_lossless: true,
             last_animated: false,
             last_animation_fps: 10.0,
             last_gif_colors: 256,
@@ -1941,6 +1985,7 @@ impl FileHandler {
         format: SaveFormat,
         quality: u8,
         tiff_compression: TiffCompression,
+        webp_lossless: bool,
     ) -> Result<(), ImageError> {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
@@ -1967,8 +2012,7 @@ impl FileHandler {
                 )?;
             }
             SaveFormat::Webp => {
-                let dyn_img = DynamicImage::ImageRgba8(image.clone());
-                dyn_img.save(path)?;
+                encode_static_webp(image, &mut writer, quality, webp_lossless)?;
             }
             SaveFormat::Bmp => {
                 let encoder = BmpEncoder::new(&mut writer);
@@ -2059,6 +2103,7 @@ impl FileHandler {
         self.last_format = format;
         self.last_quality = quality;
         self.last_tiff_compression = tiff_compression;
+        self.last_webp_lossless = webp_lossless;
 
         Ok(())
     }
@@ -2073,6 +2118,7 @@ impl FileHandler {
                 self.last_format,
                 self.last_quality,
                 self.last_tiff_compression,
+                self.last_webp_lossless,
             )
         } else {
             Err(ImageError::IoError(std::io::Error::new(
@@ -2093,6 +2139,7 @@ impl FileHandler {
             last_format: self.last_format,
             last_quality: self.last_quality,
             last_tiff_compression: self.last_tiff_compression,
+            last_webp_lossless: self.last_webp_lossless,
             last_animated: self.last_animated,
             last_animation_fps: self.last_animation_fps,
             last_gif_colors: self.last_gif_colors,
@@ -2306,6 +2353,57 @@ pub fn decode_apng_frames(path: &Path) -> Result<Vec<(RgbaImage, u16)>, String> 
     Ok(frames)
 }
 
+/// Decode all frames from an animated WebP file.
+pub fn decode_webp_frames(path: &Path) -> Result<Vec<(RgbaImage, u16)>, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("Failed to read WebP: {}", e))?;
+    let mut anim = webp::AnimDecoder::new(&bytes)
+        .decode()
+        .map_err(|e| format!("WebP animation decode error: {}", e))?;
+    if !anim.has_animation() || anim.len() == 0 {
+        let img = image::open(path)
+            .map_err(|e| format!("WebP decode error: {}", e))?
+            .to_rgba8();
+        return Ok(vec![(img, 100)]);
+    }
+    anim.sort_by_time_stamp();
+
+    let mut raw_frames = Vec::with_capacity(anim.len());
+    for frame in &anim {
+        let img = match frame.get_layout() {
+            webp::PixelLayout::Rgba => {
+                RgbaImage::from_raw(frame.width(), frame.height(), frame.get_image().to_vec())
+                    .ok_or_else(|| "Invalid WebP RGBA frame buffer".to_string())?
+            }
+            webp::PixelLayout::Rgb => {
+                let mut rgba = Vec::with_capacity((frame.width() * frame.height() * 4) as usize);
+                for rgb in frame.get_image().chunks_exact(3) {
+                    rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+                }
+                RgbaImage::from_raw(frame.width(), frame.height(), rgba)
+                    .ok_or_else(|| "Invalid WebP RGB frame buffer".to_string())?
+            }
+        };
+        raw_frames.push((img, frame.get_time_ms()));
+    }
+
+    let mut frames = Vec::with_capacity(raw_frames.len());
+    for i in 0..raw_frames.len() {
+        let delay = raw_frames
+            .get(i + 1)
+            .map(|(_, next)| next.saturating_sub(raw_frames[i].1))
+            .unwrap_or_else(|| {
+                if i > 0 {
+                    raw_frames[i].1.saturating_sub(raw_frames[i - 1].1)
+                } else {
+                    100
+                }
+            })
+            .clamp(MIN_FRAME_DELAY_MS as i32, u16::MAX as i32) as u16;
+        frames.push((raw_frames[i].0.clone(), delay));
+    }
+    Ok(frames)
+}
+
 /// Convert PNG output buffer to RGBA based on color type.
 fn convert_png_buffer_to_rgba(
     buf: &[u8],
@@ -2401,11 +2499,62 @@ pub fn detect_animation(path: &Path) -> AnimationInfo {
     match ext.as_str() {
         "gif" => detect_gif_animation(path),
         "png" => detect_png_animation(path),
+        "webp" => detect_webp_animation(path),
         _ => AnimationInfo {
             is_animated: false,
             frame_count: 1,
             avg_delay_ms: 100,
         },
+    }
+}
+
+fn detect_webp_animation(path: &Path) -> AnimationInfo {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return AnimationInfo {
+                is_animated: false,
+                frame_count: 1,
+                avg_delay_ms: 100,
+            };
+        }
+    };
+    let mut anim = match webp::AnimDecoder::new(&bytes).decode() {
+        Ok(anim) => anim,
+        Err(_) => {
+            return AnimationInfo {
+                is_animated: false,
+                frame_count: 1,
+                avg_delay_ms: 100,
+            };
+        }
+    };
+    if !anim.has_animation() || anim.len() <= 1 {
+        return AnimationInfo {
+            is_animated: false,
+            frame_count: 1,
+            avg_delay_ms: 100,
+        };
+    }
+    anim.sort_by_time_stamp();
+    let times: Vec<i32> = (&anim).into_iter().map(|f| f.get_time_ms()).collect();
+    let mut total_delay = 0u32;
+    let mut delay_count = 0u32;
+    for pair in times.windows(2) {
+        total_delay += pair[1]
+            .saturating_sub(pair[0])
+            .max(MIN_FRAME_DELAY_MS as i32) as u32;
+        delay_count += 1;
+    }
+    let avg_delay_ms = total_delay
+        .checked_div(delay_count)
+        .map(|d| d.max(MIN_FRAME_DELAY_MS as u32) as u16)
+        .unwrap_or(100);
+
+    AnimationInfo {
+        is_animated: true,
+        frame_count: anim.len() as u32,
+        avg_delay_ms,
     }
 }
 
@@ -2630,6 +2779,78 @@ pub fn encode_animated_png(frames: &[RgbaImage], fps: f32, path: &Path) -> Resul
         .map_err(|e| format!("APNG finish error: {}", e))?;
 
     Ok(())
+}
+
+/// Encode multiple frames as animated WebP.
+pub fn encode_animated_webp(
+    frames: &[RgbaImage],
+    frame_modes: &[WebpFrameCompression],
+    fps: f32,
+    quality: u8,
+    path: &Path,
+) -> Result<(), String> {
+    if frames.is_empty() {
+        return Err("No frames to encode".to_string());
+    }
+    let width = frames[0].width();
+    let height = frames[0].height();
+    if frames
+        .iter()
+        .any(|frame| frame.width() != width || frame.height() != height)
+    {
+        return Err("All WebP animation frames must have the same dimensions".to_string());
+    }
+
+    let global_config = webp_frame_config(WebpFrameCompression::Lossless, quality)?;
+    let mut encoder = webp::AnimEncoder::new(width, height, &global_config);
+    encoder.set_loop_count(0);
+    encoder.set_bgcolor([0, 0, 0, 0]);
+
+    let configs: Vec<webp::WebPConfig> = frames
+        .iter()
+        .enumerate()
+        .map(|(idx, _)| {
+            let mode = frame_modes
+                .get(idx)
+                .copied()
+                .unwrap_or(WebpFrameCompression::Lossless);
+            webp_frame_config(mode, quality)
+        })
+        .collect::<Result<_, _>>()?;
+
+    let delay_ms = (1000.0 / fps.max(1.0)).round().clamp(1.0, i32::MAX as f32) as i32;
+    for (idx, frame) in frames.iter().enumerate() {
+        let timestamp = (idx as i32).saturating_mul(delay_ms);
+        let anim_frame = webp::AnimFrame::new(
+            frame.as_raw(),
+            webp::PixelLayout::Rgba,
+            width,
+            height,
+            timestamp,
+            Some(&configs[idx]),
+        );
+        encoder.add_frame(anim_frame);
+    }
+
+    let bytes = encoder
+        .try_encode()
+        .map_err(|e| format!("WebP animation encode error: {:?}", e))?;
+    std::fs::write(path, &*bytes).map_err(|e| format!("Failed to write WebP: {}", e))?;
+    Ok(())
+}
+
+fn webp_frame_config(mode: WebpFrameCompression, quality: u8) -> Result<webp::WebPConfig, String> {
+    let mut config = webp::WebPConfig::new().map_err(|_| "WebP config init failed".to_string())?;
+    config.lossless = if mode == WebpFrameCompression::Lossless {
+        1
+    } else {
+        0
+    };
+    config.quality = quality.clamp(1, 100) as f32;
+    config.method = 4;
+    config.exact = 1;
+    config.alpha_quality = 100;
+    Ok(config)
 }
 
 /// Quantize an RGBA image to indexed color (palette + indices).

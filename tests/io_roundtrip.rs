@@ -10,9 +10,11 @@ mod common;
 
 use common::*;
 use image::{Rgba, RgbaImage};
-use paintfe::canvas::{CanvasState, Layer, LayerFolder, TiledImage};
+use paintfe::canvas::{CanvasState, Layer, LayerFolder, TiledImage, WebpFrameCompression};
 use paintfe::components::dialogs::{SaveFormat, TiffCompression};
-use paintfe::io::{encode_and_write, load_image_sync, load_pfe, save_pfe};
+use paintfe::io::{
+    decode_webp_frames, encode_and_write, encode_animated_webp, load_image_sync, load_pfe, save_pfe,
+};
 use std::path::PathBuf;
 
 /// Temp directory for this test run, auto-cleaned.
@@ -30,7 +32,7 @@ fn test_image() -> RgbaImage {
 /// Helper: save an image, load it back, return the loaded composite.
 fn roundtrip_format(img: &RgbaImage, name: &str, format: SaveFormat, quality: u8, tolerance: u8) {
     let path = temp_dir().join(name);
-    encode_and_write(img, &path, format, quality, TiffCompression::None).unwrap();
+    encode_and_write(img, &path, format, quality, TiffCompression::None, true).unwrap();
 
     let loaded_state = load_image_sync(&path).unwrap();
     let loaded = loaded_state.composite();
@@ -86,8 +88,25 @@ fn roundtrip_jpeg() {
 
 #[test]
 fn roundtrip_webp() {
-    // WebP lossy at q95
-    roundtrip_format(&test_image(), "rt.webp", SaveFormat::Webp, 95, 10);
+    roundtrip_format(&test_image(), "rt.webp", SaveFormat::Webp, 95, 0);
+}
+
+#[test]
+fn roundtrip_webp_lossy_decodes() {
+    let img = test_image();
+    let path = temp_dir().join("rt_lossy.webp");
+    encode_and_write(
+        &img,
+        &path,
+        SaveFormat::Webp,
+        75,
+        TiffCompression::None,
+        false,
+    )
+    .unwrap();
+    let loaded = load_image_sync(&path).unwrap().composite();
+    assert_eq!(loaded.dimensions(), img.dimensions());
+    let _ = std::fs::remove_file(&path);
 }
 
 // =============================================================================
@@ -232,6 +251,39 @@ fn roundtrip_pfe_blend_modes() {
     let _ = std::fs::remove_file(&path);
 }
 
+#[test]
+fn roundtrip_pfe_webp_frame_compression() {
+    let mut state = canvas_from_image(&test_image());
+    state.layers[0].webp_frame_compression = WebpFrameCompression::Lossy;
+    let path = temp_dir().join("rt_webp_frame_mode.pfe");
+
+    save_pfe(&state, &path).unwrap();
+    let loaded = load_pfe(&path).unwrap();
+
+    assert_eq!(
+        loaded.layers[0].webp_frame_compression,
+        WebpFrameCompression::Lossy
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn animated_webp_roundtrip_frames() {
+    let frame_a = RgbaImage::from_pixel(16, 16, Rgba([255, 0, 0, 255]));
+    let frame_b = RgbaImage::from_pixel(16, 16, Rgba([0, 255, 0, 255]));
+    let frames = vec![frame_a, frame_b];
+    let modes = vec![WebpFrameCompression::Lossless, WebpFrameCompression::Lossy];
+    let path = temp_dir().join("rt_anim.webp");
+
+    encode_animated_webp(&frames, &modes, 10.0, 80, &path).unwrap();
+    let decoded = decode_webp_frames(&path).unwrap();
+
+    assert_eq!(decoded.len(), 2);
+    assert_eq!(decoded[0].0.dimensions(), (16, 16));
+    assert_eq!(decoded[1].0.dimensions(), (16, 16));
+    let _ = std::fs::remove_file(&path);
+}
+
 // =============================================================================
 // load_image_sync dispatch
 // =============================================================================
@@ -240,7 +292,15 @@ fn roundtrip_pfe_blend_modes() {
 fn load_png_via_load_image_sync() {
     let img = test_image();
     let path = temp_dir().join("load_test.png");
-    encode_and_write(&img, &path, SaveFormat::Png, 95, TiffCompression::None).unwrap();
+    encode_and_write(
+        &img,
+        &path,
+        SaveFormat::Png,
+        95,
+        TiffCompression::None,
+        true,
+    )
+    .unwrap();
 
     let state = load_image_sync(&path).unwrap();
     assert_eq!(state.width, 64);

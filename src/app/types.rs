@@ -70,6 +70,7 @@ pub enum IoResult {
         path: std::path::PathBuf,
         format: SaveFormat,
         quality: u8,
+        webp_lossless: bool,
         tiff_compression: TiffCompression,
         /// When saving from Save As, also update the project name/path.
         update_project_path: bool,

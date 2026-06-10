@@ -5,7 +5,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    # Disable routine crate PRs; update Cargo dependencies manually.
+    open-pull-requests-limit: 0
     # Suppress major-version bumps that require significant migration work.
     # egui/eframe, wgpu, rfd, and bincode each involve large API rewrites;
     # image, gif, png, tiff, libloading, pollster are deferred for stability.

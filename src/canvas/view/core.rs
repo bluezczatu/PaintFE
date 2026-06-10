@@ -27,6 +27,57 @@ impl Canvas {
         ui.ctx().request_repaint();
     }
 
+    fn flush_committed_preview_region(
+        ui: &egui::Ui,
+        state: &mut CanvasState,
+        texture_options: TextureOptions,
+    ) {
+        let Some(rect) = state.commit_composite_flush_rect.take() else {
+            return;
+        };
+        let expected_len = state.width as usize * state.height as usize;
+        if state.composite_cache.is_none()
+            || state.composite_cpu_buffer.len() != expected_len
+            || rect.width() <= 0.0
+            || rect.height() <= 0.0
+        {
+            return;
+        }
+
+        let (region_image, [rx, ry]) = state.composite_partial(rect);
+        let [rw, rh] = region_image.size;
+        if rw == 0 || rh == 0 || rx + rw > state.width as usize || ry + rh > state.height as usize
+        {
+            return;
+        }
+
+        let canvas_w = state.width as usize;
+        for row in 0..rh {
+            let dst_start = (ry + row) * canvas_w + rx;
+            let src_start = row * rw;
+            state.composite_cpu_buffer[dst_start..dst_start + rw]
+                .copy_from_slice(&region_image.pixels[src_start..src_start + rw]);
+        }
+
+        let display_image = if state.cmyk_preview {
+            ColorImage {
+                size: region_image.size,
+                source_size: region_image.source_size,
+                pixels: apply_cmyk_soft_proof(&region_image.pixels),
+            }
+        } else {
+            region_image
+        };
+        if let Some(ref mut tex) = state.composite_cache {
+            tex.set_partial(
+                [rx, ry],
+                ImageData::Color(Arc::new(display_image)),
+                texture_options,
+            );
+            ui.ctx().request_repaint();
+        }
+    }
+
     pub fn new(preferred_gpu: &str) -> Self {
         let gpu_renderer = crate::gpu::GpuRenderer::new(preferred_gpu);
         Self {
@@ -221,6 +272,7 @@ impl Canvas {
         //   A: Avoid recomposite when only filter mode changes (tex options only)
         {
             let gpu = &mut self.gpu_renderer;
+            Self::flush_committed_preview_region(ui, state, texture_options);
             let pixels_dirty = state.dirty_rect.is_some() || state.composite_cache.is_none();
             let defer_live_resize_composite = live_window_resize && state.composite_cache.is_some();
             let has_visible_adjustment = state
@@ -698,6 +750,17 @@ impl Canvas {
                 };
                 crate::signal_draw::draw_grid_texture(&painter, canvas_rect, grid_cell, grid_color);
             }
+        }
+
+        if state.layers.is_empty() {
+            state.composite_cache = None;
+            state.preview_texture_cache = None;
+            state.composite_cpu_buffer.clear();
+            self.paste_layers_above_cache = None;
+            self.paste_layers_below_cache = None;
+            self.paste_overwrite_preview_cache = None;
+            self.gpu_renderer.clear_layers();
+            return;
         }
 
         // Draw accent-tinted under-glow + depth shadow around the canvas image

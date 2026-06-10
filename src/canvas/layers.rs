@@ -227,6 +227,22 @@ pub struct ImageMetadata {
     pub raw_png_chunks: Vec<Vec<u8>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum WebpFrameCompression {
+    Lossy,
+    #[default]
+    Lossless,
+}
+
+impl WebpFrameCompression {
+    pub fn label(self) -> &'static str {
+        match self {
+            WebpFrameCompression::Lossy => "Lossy",
+            WebpFrameCompression::Lossless => "Lossless",
+        }
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum AdjustmentKind {
     Exposure {
@@ -398,6 +414,8 @@ pub struct Layer {
     pub hdr_metadata: HdrMetadata,
     /// Experimental source metadata preservation container.
     pub source_metadata: ImageMetadata,
+    /// Used only when exporting layers as animated WebP frames.
+    pub webp_frame_compression: WebpFrameCompression,
     /// Original high-depth pixel payload for project round-trips.
     pub deep_pixels: Option<crate::experimental::DeepRgbaBuffer>,
 }
@@ -443,6 +461,7 @@ impl Layer {
             pixel_format: PixelFormat::RgbaU8,
             hdr_metadata: HdrMetadata::default(),
             source_metadata: ImageMetadata::default(),
+            webp_frame_compression: WebpFrameCompression::default(),
             deep_pixels: None,
         }
     }
@@ -464,6 +483,7 @@ impl Layer {
             pixel_format: PixelFormat::RgbaU8,
             hdr_metadata: HdrMetadata::default(),
             source_metadata: ImageMetadata::default(),
+            webp_frame_compression: WebpFrameCompression::default(),
             deep_pixels: None,
         }
     }

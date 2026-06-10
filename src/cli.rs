@@ -70,6 +70,10 @@ pub struct CliArgs {
     #[arg(short, long, default_value_t = 90, value_name = "1-100")]
     pub quality: u8,
 
+    /// Write WebP lossily using --quality. Default WebP output is lossless.
+    #[arg(long)]
+    pub webp_lossy: bool,
+
     /// TIFF compression mode: none, lzw, deflate (default: none).
     #[arg(long, default_value = "none", value_name = "MODE")]
     pub tiff_compression: String,
@@ -183,6 +187,7 @@ pub fn run(args: CliArgs) -> ExitCode {
             script_source.as_deref(),
             save_format,
             args.quality,
+            !args.webp_lossy,
             tiff_compression,
             args.flatten,
             args.verbose,
@@ -220,6 +225,7 @@ fn run_one(
     script: Option<&str>,
     format: SaveFormat,
     quality: u8,
+    webp_lossless: bool,
     tiff_compression: TiffCompression,
     flatten: bool,
     verbose: bool,
@@ -286,8 +292,15 @@ fn run_one(
                     .unwrap_or_else(|| image::RgbaImage::new(state.width, state.height))
             };
 
-            encode_and_write(&flat_img, output, format, quality, tiff_compression)
-                .map_err(|e| format!("save failed: {}", e))?;
+            encode_and_write(
+                &flat_img,
+                output,
+                format,
+                quality,
+                tiff_compression,
+                webp_lossless,
+            )
+            .map_err(|e| format!("save failed: {}", e))?;
         }
     }
 
