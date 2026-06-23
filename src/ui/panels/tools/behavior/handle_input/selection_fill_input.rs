@@ -331,11 +331,15 @@ impl ToolsPanel {
 
             // Color picker tool - sample colors
             Tool::ColorPicker => {
-                if (is_primary_clicked || is_secondary_clicked)
+                let pointer_moved_at_least_one_pixel = ui.input(|i| {
+                    let delta = i.pointer.delta();
+                    delta.x.abs() >= 1.0 || delta.y.abs() >= 1.0
+                });
+                if is_primary_down
+                    && pointer_moved_at_least_one_pixel
                     && let Some(pos) = canvas_pos
                 {
-                    // TODO: Implement color picker logic
-                    self.pick_color_at_position(canvas_state, pos, is_secondary_clicked);
+                    self.pick_color_at_position(canvas_state, pos, false);
                 }
             }
 
@@ -346,4 +350,3 @@ impl ToolsPanel {
         }
     }
 }
-
