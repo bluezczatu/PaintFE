@@ -266,8 +266,10 @@ fn paint_dialog_header_impl(
 ) -> bool {
     let available_width = ui.available_width();
     let header_height = 32.0;
+    // Leave dragging to the containing movable Window while keeping the close
+    // button as its own clickable interaction.
     let (rect, response) =
-        ui.allocate_exact_size(Vec2::new(available_width, header_height), Sense::click());
+        ui.allocate_exact_size(Vec2::new(available_width, header_height), Sense::hover());
 
     let painter = ui.painter();
     // Gradient-like header: accent faint fill with rounded top corners
@@ -313,20 +315,30 @@ fn paint_dialog_header_impl(
         Pos2::new(rect.max.x - close_size.x * 0.5, rect.center().y),
         close_size,
     );
-    let close_response = ui.interact(
-        close_rect,
-        response.id.with("dialog_header_close"),
-        Sense::click(),
-    );
+    let close_response = ui
+        .interact(
+            close_rect,
+            response.id.with("dialog_header_close"),
+            Sense::click(),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    let close_visual_rect = Rect::from_center_size(close_rect.center(), Vec2::splat(18.0));
+    if close_response.hovered() {
+        painter.rect_filled(
+            close_visual_rect,
+            CornerRadius::same(4),
+            ui.visuals().widgets.hovered.weak_bg_fill,
+        );
+    }
     painter.text(
-        close_rect.center(),
+        close_visual_rect.center(),
         egui::Align2::CENTER_CENTER,
         "×",
-        egui::FontId::proportional(14.0),
+        egui::FontId::proportional(13.0),
         if close_response.hovered() {
-            colors.accent_strong
-        } else {
             colors.accent
+        } else {
+            colors.text_muted
         },
     );
 

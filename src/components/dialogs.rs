@@ -311,12 +311,16 @@ impl NewFileDialog {
                 .title_bar(false)
                 .collapsible(false)
                 .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .movable(true)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.content_rect().center())
                 .show(ctx, |ui| {
                     ui.set_min_width(360.0);
 
                     let colors = DialogColors::from_ctx(ctx);
-                    paint_dialog_header(ui, &colors, "\u{1F4C4}", &t!("dialog.new_file"));
+                    if paint_dialog_header(ui, &colors, "\u{1F4C4}", &t!("dialog.new_file")) {
+                        should_close = true;
+                    }
                     ui.add_space(6.0);
 
                     // ── Preset row ──────────────────────────────────────────
@@ -371,6 +375,11 @@ impl NewFileDialog {
                                     egui::TextEdit::singleline(&mut self.width_input)
                                         .desired_width(96.0),
                                 );
+                                Self::select_all_text_on_ctrl_a(
+                                    ctx,
+                                    &width_response,
+                                    &self.width_input,
+                                );
                                 if self.focus_width_on_open {
                                     width_response.request_focus();
                                     self.focus_width_on_open = false;
@@ -407,6 +416,11 @@ impl NewFileDialog {
                                 let height_response = ui.add(
                                     egui::TextEdit::singleline(&mut self.height_input)
                                         .desired_width(96.0),
+                                );
+                                Self::select_all_text_on_ctrl_a(
+                                    ctx,
+                                    &height_response,
+                                    &self.height_input,
                                 );
                                 let height_commit = height_response.lost_focus()
                                     || (height_response.has_focus()
@@ -543,6 +557,25 @@ impl NewFileDialog {
         }
 
         result
+    }
+
+    fn select_all_text_on_ctrl_a(ctx: &egui::Context, response: &egui::Response, text: &str) {
+        let select_all = response.has_focus()
+            && ctx.input(|i| {
+                (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::A)
+            });
+        if !select_all {
+            return;
+        }
+
+        let mut state = egui::TextEdit::load_state(ctx, response.id).unwrap_or_default();
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::two(
+                egui::text::CCursor::default(),
+                egui::text::CCursor::new(text.chars().count()),
+            )));
+        state.store(ctx, response.id);
     }
 
     /// Convert width/height values between units
