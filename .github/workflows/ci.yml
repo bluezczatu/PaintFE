@@ -43,13 +43,18 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Build Paint.NET compatibility host
-        run: dotnet build paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release
+        run: dotnet build paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -m:1
 
       - name: Test compatibility host and fixture plugin
         shell: pwsh
         run: |
           dotnet build paintdotnet-host/tests/LegacyFixture/LegacyFixture.csproj -c Release
           dotnet run --project paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -- --self-test paintdotnet-host/tests/LegacyFixture/bin/Release/net8.0/LegacyFixture.dll
+
+      - name: Test PDN import fixture
+        run: |
+          dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -m:1 -o target/pdn-host/win-x64
+          cargo test pdn --lib
 
   audit:
     name: Dependency audit

@@ -10,6 +10,24 @@ using PaintDotNet.PropertySystem;
 
 const int ProtocolVersion = 1;
 
+if (args is ["--read-pdn", var pdnPath])
+{
+    try
+    {
+        var document = PdnReader.Read(pdnPath);
+        await Framing.WritePdnResponseAsync(Console.OpenStandardOutput(),
+            new PdnResponse(true, null, document.Width, document.Height, document.Layers, document.Pixels.Length),
+            document.Pixels);
+    }
+    catch (Exception exception)
+    {
+        await Framing.WritePdnResponseAsync(Console.OpenStandardOutput(),
+            new PdnResponse(false, FriendlyError(exception), 0, 0, [], 0), []);
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 if (args is ["--self-test", ..])
 {
     var surface = new Surface(2, 2);
@@ -212,6 +230,9 @@ sealed record HostResponse(
     int ProtocolVersion, bool Ok, string? Error, string? Name, string? Category,
     string? EffectType, PropertyDescription[] Properties, int PixelLength);
 
+sealed record PdnResponse(
+    bool Ok, string? Error, int Width, int Height, PdnLayer[] Layers, int PixelLength);
+
 sealed record PropertyDescription(
     string Name, string Kind, JsonElement Default, double? Min, double? Max, string[] Choices)
 {
@@ -241,6 +262,16 @@ sealed record PropertyDescription(
 
 static class Framing
 {
+    public static async Task WritePdnResponseAsync(Stream output, PdnResponse response, byte[] pixels)
+    {
+        var header = JsonSerializer.SerializeToUtf8Bytes(response,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        await output.WriteAsync(BitConverter.GetBytes(header.Length));
+        await output.WriteAsync(header);
+        await output.WriteAsync(pixels);
+        await output.FlushAsync();
+    }
+
     public static async Task<HostRequest> ReadRequestAsync(Stream input)
     {
         var headerLength = await ReadInt32Async(input);

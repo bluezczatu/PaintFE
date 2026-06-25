@@ -115,9 +115,13 @@ Setup: Edit > Preferences > AI. Point it at your `onnxruntime.dll` / `libonnxrun
 
 ## File Formats
 
-**Read:** PNG, JPEG, WebP, BMP, TIFF, TGA, GIF (animated), APNG (animated), `.PFE`, CR2/CR3/NEF/ARW/DNG/ORF/RW2/SRW/PEF/RAF (RAW via `rawloader`)
+**Read:** PNG, JPEG, WebP, BMP, TIFF, TGA, GIF (animated), APNG (animated), `.PFE`, `.PDN` (read-only, layers preserved), CR2/CR3/NEF/ARW/DNG/ORF/RW2/SRW/PEF/RAF (RAW via `rawloader`)
 
 **Write:** PNG, JPEG, WebP, BMP, TIFF, TGA, ICO, GIF (static + animated), APNG (animated), `.PFE`
+
+Paint.NET `.PDN` projects are imported as raster layers with names, visibility,
+opacity, and supported blend modes. PaintFE never overwrites the source `.PDN`;
+Save opens Save As so the imported project can be stored as `.PFE` or exported.
 
 Animated export: each visible layer = one frame. FPS, loop count, and GIF palette are configurable in the export dialog.
 

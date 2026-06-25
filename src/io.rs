@@ -669,6 +669,7 @@ fn dynamic_image_to_rgba_and_deep(
 ///
 /// Supported inputs:
 /// - `.pfe` — PaintFE native project (layers preserved, format returned as-is)
+/// - `.pdn` — Paint.NET project (read-only import with raster layers preserved)
 /// - RAW camera files (CR2, NEF, ARW, DNG, etc.) — decoded to 8-bit sRGB RGBA
 /// - All standard raster formats supported by the `image` crate (PNG, JPEG, WEBP, BMP, …)
 pub fn load_image_sync(path: &Path) -> Result<CanvasState, String> {
@@ -681,6 +682,9 @@ pub fn load_image_sync(path: &Path) -> Result<CanvasState, String> {
     // Native project file — layers and metadata preserved
     if ext == "pfe" {
         return load_pfe(path).map_err(|e| format!("{:?}", e));
+    }
+    if ext == "pdn" {
+        return crate::pdn::load_pdn(path);
     }
 
     // Decode to display RGBA while preserving high-depth payload when available.
@@ -1880,13 +1884,14 @@ impl FileHandler {
             .add_filter(
                 "All Supported",
                 &[
-                    "pfe", "png", "jpg", "jpeg", "webp", "bmp", "tga", "gif", "ico", "tiff", "tif",
-                    "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "dng", "orf", "rw2", "pef",
-                    "raf", "raw", "rwl", "srw", "x3f", "3fr", "fff", "iiq", "mrw", "mef", "mos",
-                    "kdc", "dcr", "erf",
+                    "pfe", "pdn", "png", "jpg", "jpeg", "webp", "bmp", "tga", "gif", "ico", "tiff",
+                    "tif", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "dng", "orf", "rw2",
+                    "pef", "raf", "raw", "rwl", "srw", "x3f", "3fr", "fff", "iiq", "mrw", "mef",
+                    "mos", "kdc", "dcr", "erf",
                 ],
             )
             .add_filter("PaintFE Project", &["pfe"])
+            .add_filter("Paint.NET Project (read-only)", &["pdn"])
             .add_filter(
                 "Images",
                 &[

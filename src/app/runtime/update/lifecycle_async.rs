@@ -533,6 +533,27 @@ impl PaintFEApp {
                     self.canvas.gpu_clear_layers();
                     self.maybe_close_initial_blank();
                 }
+                IoResult::PdnLoaded {
+                    mut canvas_state,
+                    path,
+                } => {
+                    self.pending_open_paths
+                        .remove(&Self::normalize_open_path(&path));
+                    log_info!("FileIO: pdn imported — path={:?}", path);
+                    canvas_state.composite_cache = None;
+                    canvas_state.mark_dirty(None);
+
+                    // PDN is import-only: retain the source path for the tab and duplicate-open
+                    // detection, but leave the save target empty so Ctrl+S opens Save As.
+                    let file_handler = FileHandler::new();
+                    let project = Project::from_file(path, canvas_state, file_handler);
+                    self.projects.push(project);
+                    self.persist_active_project_view();
+                    self.active_project_index = self.projects.len() - 1;
+                    self.restore_active_project_view();
+                    self.canvas.gpu_clear_layers();
+                    self.maybe_close_initial_blank();
+                }
             }
         }
         if self.pending_io_ops > 0 {

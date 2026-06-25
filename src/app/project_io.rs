@@ -218,6 +218,9 @@ impl PaintFEApp {
             .extension()
             .map(|ext| ext.to_string_lossy().to_lowercase() == "pfe")
             .unwrap_or(false);
+        let is_pdn = path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("pdn"));
 
         if is_pfe {
             // Open .pfe project file in background (preserves layers)
@@ -234,6 +237,23 @@ impl PaintFEApp {
                     let _ = sender.send(IoResult::LoadFailed {
                         path: Some(path),
                         error: format!("Failed to open project: {}", e),
+                    });
+                }
+            });
+        } else if is_pdn {
+            let sender = self.io_sender.clone();
+            if self.pending_io_ops == 0 {
+                self.io_ops_start_time = Some(current_time);
+            }
+            self.pending_io_ops += 1;
+            rayon::spawn(move || match crate::pdn::load_pdn(&path) {
+                Ok(canvas_state) => {
+                    let _ = sender.send(IoResult::PdnLoaded { canvas_state, path });
+                }
+                Err(error) => {
+                    let _ = sender.send(IoResult::LoadFailed {
+                        path: Some(path),
+                        error: format!("Failed to import Paint.NET project: {error}"),
                     });
                 }
             });

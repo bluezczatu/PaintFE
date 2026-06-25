@@ -7,4 +7,4 @@ OUT="${2:-$ROOT/target/pdn-host/$RID}"
 
 dotnet publish \
   "$ROOT/paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj" \
-  -c Release -r "$RID" --self-contained true -o "$OUT"
+  -c Release -r "$RID" --self-contained true -m:1 -o "$OUT"

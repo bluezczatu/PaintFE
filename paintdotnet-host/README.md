@@ -7,12 +7,13 @@ contain or redistribute Paint.NET binaries.
 Publish a self-contained host next to PaintFE:
 
 ```bash
-dotnet publish src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj \
-  -c Release -r linux-x64 --self-contained true -o ../target/pdn-host/linux-x64
+./publish.sh linux-x64
 ```
 
 Supported RIDs are `win-x64`, `linux-x64`, `osx-x64`, and `osx-arm64`.
 During development, set `PAINTFE_PDN_HOST` to the published executable.
 
-The host executes untrusted third-party code and is crash isolation, not a
-security sandbox. PaintFE requires explicit opt-in and per-plugin trust.
+The same host is also used for read-only `.pdn` project import. For plugin
+effects, it executes untrusted third-party code and is crash isolation, not a
+security sandbox. PaintFE requires explicit opt-in and per-plugin trust for
+third-party plugin DLLs.

@@ -44,7 +44,7 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Publish Paint.NET plugin host
-        run: dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -o target/release/paintdotnet-host
+        run: dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -m:1 -o target/release/paintdotnet-host
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -300,7 +300,7 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Publish Paint.NET plugin host
-        run: dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -o target/release/paintdotnet-host
+        run: dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -m:1 -o target/release/paintdotnet-host
 
       - name: Generate Store icon assets
         shell: powershell
@@ -393,11 +393,24 @@ jobs:
         run: |
           chmod +x dist/linux/PaintFE
           chmod +x dist/linux/PaintFE-x86_64.AppImage
+          chmod +x dist/linux/paintdotnet-host/PaintFE.PaintDotNetHost
+
+      - name: Package portable builds with Paint.NET host
+        run: |
+          cd dist
+          mkdir -p PaintFE-windows-x64 PaintFE-linux-x64
+          cp windows/PaintFE.exe PaintFE-windows-x64/
+          cp -R windows/paintdotnet-host PaintFE-windows-x64/paintdotnet-host
+          cp linux/PaintFE PaintFE-linux-x64/
+          cp -R linux/paintdotnet-host PaintFE-linux-x64/paintdotnet-host
+          zip -r PaintFE-windows-x64.zip PaintFE-windows-x64
+          tar -czf PaintFE-linux-x64.tar.gz PaintFE-linux-x64
 
       - name: Generate SHA-256 checksums
         run: |
           cd dist
           sha256sum windows/PaintFE.exe linux/PaintFE linux/PaintFE-x86_64.AppImage \
+            PaintFE-windows-x64.zip PaintFE-linux-x64.tar.gz \
             macos/PaintFE-macOS-arm64.dmg macos/PaintFE-macOS-x86_64.dmg \
             | sed 's|windows/||; s|linux/||; s|macos/||' \
             > checksums-SHA256.txt
@@ -413,6 +426,8 @@ jobs:
             dist/windows/PaintFE.exe
             dist/linux/PaintFE
             dist/linux/PaintFE-x86_64.AppImage
+            dist/PaintFE-windows-x64.zip
+            dist/PaintFE-linux-x64.tar.gz
             dist/macos/PaintFE-macOS-arm64.dmg
             dist/macos/PaintFE-macOS-x86_64.dmg
             dist/checksums-SHA256.txt

@@ -2,8 +2,9 @@
 # build-appimage.sh — Build a PaintFE AppImage
 # Run from the repo root: bash packaging/appimage/build-appimage.sh
 #
-# Prerequisites (installed by this script if missing):
-#   cargo, linuxdeploy
+# Prerequisites:
+#   cargo, dotnet SDK 8
+#   linuxdeploy is downloaded by this script if missing
 # -----------------------------------------------------------
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -31,11 +32,14 @@ chmod +x "$APPDIR/usr/bin/PaintFE"
 chmod +x "$APPDIR/AppRun"
 
 PDN_HOST_DIR="$REPO_ROOT/target/pdn-host/linux-x64"
-if [ -x "$PDN_HOST_DIR/PaintFE.PaintDotNetHost" ]; then
-  mkdir -p "$APPDIR/usr/bin/paintdotnet-host"
-  cp -a "$PDN_HOST_DIR/." "$APPDIR/usr/bin/paintdotnet-host/"
-  chmod +x "$APPDIR/usr/bin/paintdotnet-host/PaintFE.PaintDotNetHost"
+if [ ! -x "$PDN_HOST_DIR/PaintFE.PaintDotNetHost" ]; then
+  echo "==> Building Paint.NET compatibility host..."
+  cd "$REPO_ROOT"
+  bash paintdotnet-host/publish.sh linux-x64 "$PDN_HOST_DIR"
 fi
+mkdir -p "$APPDIR/usr/bin/paintdotnet-host"
+cp -a "$PDN_HOST_DIR/." "$APPDIR/usr/bin/paintdotnet-host/"
+chmod +x "$APPDIR/usr/bin/paintdotnet-host/PaintFE.PaintDotNetHost"
 
 # Copy icon — adjust path if your icon asset differs
 ICON="$REPO_ROOT/assets/icons/app_icon.png"

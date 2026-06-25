@@ -71,6 +71,7 @@
           <uap3:FileTypeAssociation Name="paintfe-image">
             <uap:SupportedFileTypes>
               <uap:FileType>.pfe</uap:FileType>
+              <uap:FileType>.pdn</uap:FileType>
               <uap:FileType>.png</uap:FileType>
               <uap:FileType>.jpg</uap:FileType>
               <uap:FileType>.jpeg</uap:FileType>

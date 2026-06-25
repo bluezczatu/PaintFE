@@ -99,6 +99,11 @@ pub enum IoResult {
         canvas_state: CanvasState,
         path: std::path::PathBuf,
     },
+    /// A read-only Paint.NET project import. Saving must use a PaintFE-supported format.
+    PdnLoaded {
+        canvas_state: CanvasState,
+        path: std::path::PathBuf,
+    },
 }
 
 pub struct PaintFEApp {
@@ -339,4 +344,3 @@ fn discover_system_cjk_font() -> Option<(String, Vec<u8>)> {
     }
     None
 }
-

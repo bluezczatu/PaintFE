@@ -28,7 +28,7 @@ if (-not $SkipBuild) {
     # statically linking vcruntime into the EXE (no Visual C++ Redistributable needed).
     cargo build --release
     if ($LASTEXITCODE -ne 0) { Write-Error "cargo build failed"; exit 1 }
-    dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -o target/release/paintdotnet-host
+    dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -m:1 -o target/release/paintdotnet-host
     if ($LASTEXITCODE -ne 0) { Write-Error "plugin host build failed"; exit 1 }
 } else {
     Write-Host "==> [1/5] Skipping build (--SkipBuild)"
