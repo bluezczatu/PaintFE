@@ -1,0 +1,57 @@
+name: Windows Portable Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows-portable:
+    name: Build Windows portable zip
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-portable-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-portable-cargo-
+
+      - name: Build PaintFE
+        run: cargo build --release
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish Paint.NET compatibility host
+        run: dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -m:1 -o target/release/paintdotnet-host
+
+      - name: Stage portable folder
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\PaintFE-windows-x64 | Out-Null
+          Copy-Item target\release\PaintFE.exe dist\PaintFE-windows-x64\
+          Copy-Item -Recurse -Force target\release\paintdotnet-host dist\PaintFE-windows-x64\paintdotnet-host
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PaintFE-windows-x64
+          path: dist/PaintFE-windows-x64
