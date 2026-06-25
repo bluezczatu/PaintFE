@@ -116,6 +116,7 @@ pub struct NewFileDialog {
     focus_width_on_open: bool,
     replace_width_on_first_edit: bool,
     focused_dimension_input: Option<DimensionInput>,
+    prev_ctrl_a_down: bool,
     clipboard_dims_rx: Option<mpsc::Receiver<Option<(u32, u32)>>>,
 }
 
@@ -141,6 +142,7 @@ impl Default for NewFileDialog {
             focus_width_on_open: false,
             replace_width_on_first_edit: false,
             focused_dimension_input: None,
+            prev_ctrl_a_down: false,
             clipboard_dims_rx: None,
         }
     }
@@ -164,6 +166,7 @@ impl NewFileDialog {
         self.focus_width_on_open = true;
         self.replace_width_on_first_edit = true;
         self.focused_dimension_input = Some(DimensionInput::Width);
+        self.prev_ctrl_a_down = false;
     }
 
     /// Pre-populate width and height from a clipboard image if available.
@@ -316,6 +319,8 @@ impl NewFileDialog {
                 should_close = true;
             }
 
+            let select_all_requested = self.select_all_shortcut_pressed(ctx);
+
             egui::Window::new("new_file_dialog_internal")
                 .title_bar(false)
                 .collapsible(false)
@@ -397,6 +402,7 @@ impl NewFileDialog {
                                     &mut width_output.state,
                                     &self.width_input,
                                     self.focused_dimension_input == Some(DimensionInput::Width),
+                                    select_all_requested,
                                 );
                                 if self.focus_width_on_open {
                                     width_response.request_focus();
@@ -449,6 +455,7 @@ impl NewFileDialog {
                                     &mut height_output.state,
                                     &self.height_input,
                                     self.focused_dimension_input == Some(DimensionInput::Height),
+                                    select_all_requested,
                                 );
                                 let height_commit = height_response.lost_focus()
                                     || (height_response.has_focus()
@@ -587,29 +594,41 @@ impl NewFileDialog {
         result
     }
 
+    fn select_all_shortcut_pressed(&mut self, ctx: &egui::Context) -> bool {
+        let egui_shortcut = ctx.input(|i| {
+            i.events.iter().any(|event| {
+                matches!(
+                    event,
+                    egui::Event::Key {
+                        key: egui::Key::A,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.matches_logically(egui::Modifiers::COMMAND)
+                        || modifiers.ctrl
+                        || modifiers.command
+                )
+            })
+        });
+
+        let vk_probe = crate::windows_key_probe::snapshot();
+        let windows_ctrl_a_down = vk_probe.ctrl_down && crate::windows_key_probe::is_vk_down(0x41);
+        let windows_ctrl_a_edge = windows_ctrl_a_down && !self.prev_ctrl_a_down;
+        self.prev_ctrl_a_down = windows_ctrl_a_down;
+
+        egui_shortcut || windows_ctrl_a_edge
+    }
+
     fn select_all_text_on_ctrl_a(
         ctx: &egui::Context,
         response: &egui::Response,
         state: &mut egui::text_edit::TextEditState,
         text: &str,
         dimension_input_active: bool,
+        select_all_requested: bool,
     ) {
-        let select_all = (response.has_focus() || dimension_input_active)
-            && ctx.input(|i| {
-                i.events.iter().any(|event| {
-                    matches!(
-                        event,
-                        egui::Event::Key {
-                            key: egui::Key::A,
-                            pressed: true,
-                            modifiers,
-                            ..
-                        } if modifiers.matches_logically(egui::Modifiers::COMMAND)
-                            || modifiers.ctrl
-                            || modifiers.command
-                    )
-                })
-            });
+        let select_all =
+            select_all_requested && (response.has_focus() || dimension_input_active);
         if !select_all {
             return;
         }
