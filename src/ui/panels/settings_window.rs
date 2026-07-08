@@ -33,6 +33,7 @@ pub struct SettingsWindow {
     theme_status: Option<(String, f64)>,
     plugin_manager: crate::paintdotnet_plugins::PluginManager,
     plugin_status: Option<String>,
+    pending_trust_plugin: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,6 +66,7 @@ impl Default for SettingsWindow {
             theme_status: None,
             plugin_manager: crate::paintdotnet_plugins::PluginManager::load(),
             plugin_status: None,
+            pending_trust_plugin: None,
         }
     }
 }
@@ -86,6 +88,7 @@ impl SettingsWindow {
         self.rebinding_action = None;
         self.plugin_manager = crate::paintdotnet_plugins::PluginManager::load();
         self.plugin_status = None;
+        self.pending_trust_plugin = None;
         self.dirty = false;
     }
 
@@ -219,7 +222,7 @@ impl SettingsWindow {
                             (SettingsTab::AI, Icon::SettingsAI, t!("settings.tab.ai")),
                             (
                                 SettingsTab::Plugins,
-                                Icon::SettingsAI,
+                                Icon::SettingsPlugins,
                                 t!("settings.tab.plugins"),
                             ),
                         ];
@@ -320,6 +323,8 @@ impl SettingsWindow {
                 });
             });
 
+        self.show_plugin_trust_modal(ctx);
+
         self.open = show && !should_close;
         if !self.open {
             // Persist any staged interface/theme edits when closing settings.
@@ -398,7 +403,7 @@ impl SettingsWindow {
             ui.label(t!("settings.plugins.none"));
         }
 
-        let mut trust_change: Option<(String, bool)> = None;
+        let mut trust_change: Option<String> = None;
         let mut remove: Option<String> = None;
         for plugin in &self.plugin_manager.plugins {
             ui.group(|ui| {
@@ -420,7 +425,11 @@ impl SettingsWindow {
                         t!("settings.plugins.trust_enable")
                     };
                     if ui.button(label).clicked() {
-                        trust_change = Some((plugin.sha256.clone(), !plugin.trusted));
+                        if plugin.trusted {
+                            trust_change = Some(plugin.sha256.clone());
+                        } else {
+                            self.pending_trust_plugin = Some(plugin.sha256.clone());
+                        }
                     }
                     if ui.button(t!("common.delete")).clicked() {
                         remove = Some(plugin.sha256.clone());
@@ -428,8 +437,8 @@ impl SettingsWindow {
                 });
             });
         }
-        if let Some((hash, value)) = trust_change
-            && let Err(error) = self.plugin_manager.set_trusted_enabled(&hash, value)
+        if let Some(hash) = trust_change
+            && let Err(error) = self.plugin_manager.set_trusted_enabled(&hash, false)
         {
             self.plugin_status = Some(error);
         }
@@ -438,6 +447,53 @@ impl SettingsWindow {
         {
             self.plugin_status = Some(error);
         }
+    }
+
+    fn show_plugin_trust_modal(&mut self, ctx: &egui::Context) {
+        let Some(hash) = self.pending_trust_plugin.clone() else {
+            return;
+        };
+        let Some(plugin) = self
+            .plugin_manager
+            .plugins
+            .iter()
+            .find(|plugin| plugin.sha256 == hash)
+            .cloned()
+        else {
+            self.pending_trust_plugin = None;
+            return;
+        };
+
+        egui::Window::new("paintdotnet_plugin_trust_confirm")
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.set_min_width(460.0);
+                ui.label(egui::RichText::new("Trust Paint.NET plugin?").strong().size(16.0));
+                ui.add_space(8.0);
+                ui.colored_label(
+                    ui.visuals().error_fg_color,
+                    "This DLL is executable code. It can access your files, network, and system as your user account.",
+                );
+                ui.add_space(8.0);
+                ui.label(format!("Plugin: {}", plugin.name));
+                ui.label(format!("Path: {}", plugin.source_file));
+                ui.label(format!("SHA-256: {}", plugin.sha256));
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        self.pending_trust_plugin = None;
+                    }
+                    if ui.button("Trust this exact file").clicked() {
+                        if let Err(error) = self.plugin_manager.set_trusted_enabled(&hash, true) {
+                            self.plugin_status = Some(error);
+                        }
+                        self.pending_trust_plugin = None;
+                    }
+                });
+            });
     }
 
     // -- General Tab -------------------------------------------

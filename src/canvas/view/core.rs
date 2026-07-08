@@ -165,6 +165,7 @@ impl Canvas {
             None,
             "",
             false,
+            false,
         );
     }
 
@@ -185,6 +186,7 @@ impl Canvas {
         filter_ops_start_time: Option<f64>,
         io_ops_start_time: Option<f64>,
         filter_status_description: &str,
+        pointer_over_blocking_ui: bool,
         live_window_resize: bool,
     ) {
         // FPS tracking: measure time since last frame
@@ -1852,7 +1854,9 @@ impl Canvas {
                         )
                     })
                 });
-            let ui_blocking = egui::Popup::is_any_open(ui.ctx()) || pointer_over_egui_with_touch;
+            let ui_blocking = egui::Popup::is_any_open(ui.ctx())
+                || pointer_over_egui_with_touch
+                || pointer_over_blocking_ui;
 
             // Get mouse position and check if over canvas.
             // On Wayland with a graphics tablet the stylus may route events as
@@ -1875,7 +1879,7 @@ impl Canvas {
             });
             let pointer_over_canvas = mouse_pos.is_some_and(|pos| canvas_rect.contains(pos));
             let raw_pointer_button_on_canvas = ui.input(|i| {
-                if pointer_over_egui {
+                if pointer_over_egui || pointer_over_blocking_ui {
                     return false;
                 }
                 i.events.iter().any(|e| match e {
@@ -1895,6 +1899,7 @@ impl Canvas {
                 .active_tool
                 == crate::components::tools::Tool::Fill
                 && !pointer_over_egui
+                && !pointer_over_blocking_ui
             {
                 ui.input(|i| {
                     i.events
@@ -2028,7 +2033,8 @@ impl Canvas {
                 tools.text_state.is_editing && tools.text_state.editing_text_layer;
             let text_drag_override = (text_handles_active
                 || tools.text_state.text_box_drag.is_some())
-                && !pointer_over_egui_with_touch;
+                && !pointer_over_egui_with_touch
+                && !pointer_over_blocking_ui;
             let keyboard_finalize_pressed =
                 ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape));
             let pending_tool_commit = tools.mesh_warp_state.commit_pending
@@ -2179,8 +2185,14 @@ impl Canvas {
             // ====================================================================
             // TOOL-SPECIFIC CURSOR ICON
             // ====================================================================
+            let pointer_over_image_for_cursor =
+                mouse_pos.is_some_and(|pos| image_rect.contains(pos));
+            let cursor_visual_allowed = pointer_over_image_for_cursor
+                && !modal_open
+                && !egui::Popup::is_any_open(ui.ctx())
+                && !pointer_over_egui_with_touch
+                && !pointer_over_blocking_ui;
             {
-                let over_image = mouse_pos.is_some_and(|pos| image_rect.contains(pos));
                 // Only override cursor when mouse is truly over just the canvas ÔÇö
                 // not when a dialog, menu, popup, or floating panel is on top.
                 // Exception: text rotation/resize handles may be drawn outside image bounds.
@@ -2188,10 +2200,11 @@ impl Canvas {
                     || text_rotating
                     || text_hovering_resize.is_some()
                     || text_resizing.is_some();
-                if (over_image || text_handle_cursor)
+                if (cursor_visual_allowed || text_handle_cursor)
                     && !modal_open
                     && !egui::Popup::is_any_open(ui.ctx())
-                    && (!pointer_over_egui_with_touch || text_handle_cursor)
+                    && ((!pointer_over_egui_with_touch && !pointer_over_blocking_ui)
+                        || text_handle_cursor)
                     && let Some(tool) = active_tool_for_cursor
                 {
                     use crate::components::tools::Tool;
@@ -2277,6 +2290,11 @@ impl Canvas {
                           // (unreachable ÔÇö already matched in first arm)
                     };
                     ui.ctx().set_cursor_icon(cursor);
+                } else if pointer_over_egui_with_touch
+                    || pointer_over_blocking_ui
+                    || !pointer_over_image_for_cursor
+                {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Default);
                 }
             }
 
@@ -2284,8 +2302,8 @@ impl Canvas {
             // FILL CURSOR OVERLAY (shows exact pixel that will be flood-filled)
             // ====================================================================
             if fill_active
+                && cursor_visual_allowed
                 && let Some(pos) = mouse_pos
-                && canvas_rect.contains(pos)
                 && let Some((canvas_x_f32, canvas_y_f32)) =
                     self.screen_to_canvas_f32(pos, canvas_rect, state)
             {
@@ -2315,8 +2333,8 @@ impl Canvas {
             // MAGIC WAND CURSOR OVERLAY (shows exact seed pixel)
             // ====================================================================
             if magic_wand_active
+                && cursor_visual_allowed
                 && let Some(pos) = mouse_pos
-                && canvas_rect.contains(pos)
                 && let Some((canvas_x_f32, canvas_y_f32)) =
                     self.screen_to_canvas_f32(pos, canvas_rect, state)
             {
@@ -2347,8 +2365,8 @@ impl Canvas {
             // ====================================================================
             // Only show when Pencil tool is active, mouse is over canvas, and not painting
             if pencil_active
+                && cursor_visual_allowed
                 && let Some(pos) = mouse_pos
-                && canvas_rect.contains(pos)
                 && !is_painting
             {
                 // Convert screen position to canvas position (floating point)
@@ -2389,8 +2407,8 @@ impl Canvas {
             // COLOR PICKER CURSOR OVERLAY (shows sampled pixel)
             // ====================================================================
             if color_picker_active
+                && cursor_visual_allowed
                 && let Some(pos) = mouse_pos
-                && canvas_rect.contains(pos)
             {
                 // Convert screen position to canvas position (floating point)
                 if let Some((canvas_x_f32, canvas_y_f32)) =
@@ -2441,9 +2459,9 @@ impl Canvas {
                     )
                 });
                 if needs_icon_cursor
+                    && cursor_visual_allowed
                     && let Some(ref icon_tex) = self.tool_cursor_icon
                     && let Some(pos) = mouse_pos
-                    && canvas_rect.contains(pos)
                 {
                     use crate::components::tools::Tool;
                     let icon_sz = 18.0_f32;
@@ -2481,8 +2499,8 @@ impl Canvas {
                 ref mask_info,
                 cursor_rotation_deg,
             )) = brush_cursor_info
+                && cursor_visual_allowed
                 && let Some(pos) = mouse_pos
-                && canvas_rect.contains(pos)
                 && let Some((canvas_x, canvas_y)) =
                     self.screen_to_canvas_f32(pos, canvas_rect, state)
             {

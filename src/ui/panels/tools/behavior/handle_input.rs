@@ -275,7 +275,7 @@ impl ToolsPanel {
 
         // On Wayland the stylus may fire Touch events instead of Pointer events,
         // so augment each pointer query with a Touch-event fallback.
-        let is_primary_down = ui.input(|i| {
+        let mut is_primary_down = ui.input(|i| {
             i.pointer.primary_down()
                 || i.events.iter().any(|e| {
                     matches!(
@@ -287,7 +287,7 @@ impl ToolsPanel {
                     )
                 })
         });
-        let is_primary_released = ui.input(|i| {
+        let mut is_primary_released = ui.input(|i| {
             i.pointer.primary_released()
                 || i.events.iter().any(|e| {
                     matches!(
@@ -299,8 +299,8 @@ impl ToolsPanel {
                     )
                 })
         });
-        let is_primary_clicked = ui.input(|i| i.pointer.primary_clicked());
-        let is_primary_pressed = ui.input(|i| {
+        let mut is_primary_clicked = ui.input(|i| i.pointer.primary_clicked());
+        let mut is_primary_pressed = ui.input(|i| {
             i.pointer.primary_pressed()
                 || i.events.iter().any(|e| {
                     matches!(
@@ -312,11 +312,32 @@ impl ToolsPanel {
                     )
                 })
         }); // Just pressed this frame
-        let is_secondary_down = ui.input(|i| i.pointer.secondary_down());
-        let is_secondary_pressed =
+        let mut is_secondary_down = ui.input(|i| i.pointer.secondary_down());
+        let mut is_secondary_pressed =
             ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Secondary));
-        let is_secondary_released = ui.input(|i| i.pointer.secondary_released());
-        let is_secondary_clicked = ui.input(|i| i.pointer.secondary_clicked());
+        let mut is_secondary_released = ui.input(|i| i.pointer.secondary_released());
+        let mut is_secondary_clicked = ui.input(|i| i.pointer.secondary_clicked());
+        let pointer_over_canvas = ui.input(|i| {
+            i.pointer
+                .hover_pos()
+                .or_else(|| i.pointer.interact_pos())
+                .is_some_and(|p| canvas_rect.contains(p))
+        });
+        let pointer_over_egui = ui.ctx().is_pointer_over_egui();
+        if is_primary_pressed || is_secondary_pressed {
+            self.canvas_pointer_active = pointer_over_canvas && !pointer_over_egui;
+        }
+        let pointer_allowed = self.canvas_pointer_active || (pointer_over_canvas && !pointer_over_egui);
+        if !pointer_allowed {
+            is_primary_down = false;
+            is_primary_released = false;
+            is_primary_clicked = false;
+            is_primary_pressed = false;
+            is_secondary_down = false;
+            is_secondary_pressed = false;
+            is_secondary_released = false;
+            is_secondary_clicked = false;
+        }
         let shift_held = ui.input(|i| i.modifiers.shift);
         let enter_pressed =
             ui.input(|i| i.key_pressed(egui::Key::Enter)) || self.injected_enter_pressed;
@@ -505,6 +526,10 @@ impl ToolsPanel {
 
         if stroke_event.is_some() {
             self.pending_stroke_event = stroke_event;
+        }
+
+        if is_primary_released || is_secondary_released || (!is_primary_down && !is_secondary_down) {
+            self.canvas_pointer_active = false;
         }
     }
 }

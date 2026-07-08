@@ -54,10 +54,10 @@ impl ToolsPanel {
                     self.show_selection_options(ui);
                 }
                 Tool::MovePixels => {
-                    // Hint only ÔÇö no options
+                    self.show_move_options(ui);
                 }
                 Tool::MoveSelection => {
-                    // Hint only ÔÇö no options
+                    self.show_move_options(ui);
                 }
                 Tool::MagicWand => {
                     self.show_magic_wand_options(ui);
@@ -121,6 +121,20 @@ impl ToolsPanel {
                 }
             }
         });
+    }
+
+    fn show_move_options(&mut self, ui: &mut egui::Ui) {
+        ui.label("Filter:");
+        let current = self.move_interpolation;
+        egui::ComboBox::from_id_salt("move_tool_filter")
+            .selected_text(current.label())
+            .width(110.0)
+            .show_ui(ui, |ui| {
+                for interp in crate::ops::transform::Interpolation::all() {
+                    ui.selectable_value(&mut self.move_interpolation, *interp, interp.label());
+                }
+            });
+        ui.checkbox(&mut self.move_anti_aliasing, "Anti-aliasing");
     }
 
     /// Show brush tip picker dropdown (grid popup with categories, matching shapes tool pattern)

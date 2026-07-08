@@ -146,6 +146,7 @@ pub struct PaintFEApp {
     pending_paste_request: Option<PendingPasteRequest>,
     paste_transform_undo: Vec<crate::ops::clipboard::PasteOverlayTransform>,
     paste_transform_redo: Vec<crate::ops::clipboard::PasteOverlayTransform>,
+    move_pixels_before: Option<crate::components::history::CanvasSnapshot>,
 
     // Move-selection drag state (tracks screen-space mouse for translating the mask)
     move_sel_dragging: bool,
@@ -160,12 +161,14 @@ pub struct PaintFEApp {
     layers_panel_right_offset: Option<(f32, f32)>, // (offset_from_right, y)
     layers_panel_size: Option<(f32, f32)>,
     history_panel_right_offset: Option<(f32, f32)>, // (offset_from_right, offset_from_bottom)
+    history_panel_size: Option<(f32, f32)>,
     colors_panel_left_offset: Option<(f32, f32)>,  // (x, offset_from_bottom)
     palette_panel_pos: Option<(f32, f32)>,         // (x, y)
     tools_panel_pos: Option<(f32, f32)>,           // (x, y) absolute
     last_screen_size: (f32, f32),
+    ui_cursor_blocking_rects: Vec<egui::Rect>,
 
-    // True while a MovePixels overlay is active (extraction already pushed to history).
+    // True while a MovePixels overlay is active.
     is_move_pixels_active: bool,
     // True when pointer is currently over the floating Layers window.
     is_pointer_over_layers_panel: bool,

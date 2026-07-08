@@ -1510,24 +1510,24 @@ impl PaintFEApp {
 
             if primary_pressed && over_canvas && !over_ui {
                 // Extract pixels into overlay and blank the source area.
-                // Push extraction snapshot immediately — commit will be a separate entry.
                 let mut overlay_out: Option<crate::ops::clipboard::PasteOverlay> = None;
+                let mut before_snapshot: Option<crate::components::history::CanvasSnapshot> = None;
                 if let Some(project) = self.active_project_mut() {
-                    let mut cmd = crate::components::history::SnapshotCommand::new(
-                        "Move Pixels".to_string(),
+                    before_snapshot = Some(crate::components::history::CanvasSnapshot::capture(
                         &project.canvas_state,
-                    );
+                    ));
                     if let Some(overlay) =
                         crate::ops::clipboard::extract_to_overlay(&mut project.canvas_state)
                     {
                         overlay_out = Some(overlay);
-                        cmd.set_after(&project.canvas_state);
-                        project.history.push(Box::new(cmd));
+                        project.mark_dirty();
                     }
-                    project.mark_dirty();
                 }
-                if let Some(overlay) = overlay_out {
+                if let Some(mut overlay) = overlay_out {
+                    overlay.interpolation = self.tools_panel.move_interpolation;
+                    overlay.anti_aliasing = self.tools_panel.move_anti_aliasing;
                     self.paste_overlay = Some(overlay);
+                    self.move_pixels_before = before_snapshot;
                     self.is_move_pixels_active = true;
                 }
             }
@@ -1622,7 +1622,14 @@ impl PaintFEApp {
                 ) {
                     let shift = ctx.input(|i| i.modifiers.shift);
                     if let Some(new_mask) =
-                        Self::resize_selection_mask_from_handle(&start_mask, start_bounds, handle, (cx, cy), shift)
+                        Self::resize_selection_mask_from_handle(
+                            &start_mask,
+                            start_bounds,
+                            handle,
+                            (cx, cy),
+                            shift,
+                            self.tools_panel.move_anti_aliasing,
+                        )
                         && let Some(project) = self.active_project_mut()
                     {
                         project.canvas_state.selection_mask = Some(new_mask);
@@ -1713,6 +1720,7 @@ impl PaintFEApp {
         handle: crate::ops::shapes::ShapeHandle,
         pos: (i32, i32),
         shift: bool,
+        anti_alias: bool,
     ) -> Option<image::GrayImage> {
         use image::imageops;
         let (cw, ch) = start_mask.dimensions();
@@ -1756,7 +1764,11 @@ impl PaintFEApp {
             &src,
             (right - left) as u32,
             (bottom - top) as u32,
-            imageops::FilterType::Nearest,
+            if anti_alias {
+                imageops::FilterType::Triangle
+            } else {
+                imageops::FilterType::Nearest
+            },
         );
         let mut out = image::GrayImage::from_pixel(cw, ch, image::Luma([0u8]));
         imageops::overlay(&mut out, &resized, left as i64, top as i64);

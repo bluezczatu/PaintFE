@@ -105,6 +105,7 @@ pub enum Icon {
     SettingsHardware,
     SettingsKeybinds,
     SettingsAI,
+    SettingsPlugins,
 
     // === Menu: File ===
     MenuFileNew,
@@ -274,6 +275,7 @@ impl Icon {
             Icon::SettingsHardware => "[H]",
             Icon::SettingsKeybinds => "[K]",
             Icon::SettingsAI => "[A]",
+            Icon::SettingsPlugins => "[P]",
             Icon::SwapColors => "[<>]",
             Icon::CopyHex => "\u{2398}",
             Icon::Commit => "\u{2714}",
@@ -466,6 +468,7 @@ impl Icon {
             Icon::SettingsHardware => "Hardware",
             Icon::SettingsKeybinds => "Keybinds",
             Icon::SettingsAI => "AI",
+            Icon::SettingsPlugins => "Plugins",
             Icon::SwapColors => "Swap Colors",
             Icon::CopyHex => "Copy Hex",
             Icon::Commit => "Commit",

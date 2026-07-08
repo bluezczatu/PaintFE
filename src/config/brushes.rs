@@ -558,6 +558,11 @@ impl Assets {
             Icon::SettingsAI,
             include_bytes!("../../assets/icons/ui/settings_ai.png"),
         );
+        self.load_icon(
+            ctx,
+            Icon::SettingsPlugins,
+            include_bytes!("../../assets/icons/ui/settings_plugins.png"),
+        );
 
         // === Menu: File ===
         self.load_icon(

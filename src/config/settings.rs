@@ -110,6 +110,7 @@ pub struct AppSettings {
     pub persist_layers_panel_right_offset: Option<(f32, f32)>,
     pub persist_layers_panel_size: Option<(f32, f32)>,
     pub persist_history_panel_right_offset: Option<(f32, f32)>,
+    pub persist_history_panel_size: Option<(f32, f32)>,
     pub persist_colors_panel_left_offset: Option<(f32, f32)>,
     pub persist_palette_panel_pos: Option<(f32, f32)>,
     pub persist_palette_panel_left_offset: Option<(f32, f32)>,
@@ -155,6 +156,8 @@ pub struct AppSettings {
     pub persisted_shapes_fill_mode: String,
     pub persisted_shapes_anti_alias: bool,
     pub persisted_shapes_corner_radius: f32,
+    pub persisted_move_interpolation: String,
+    pub persisted_move_anti_aliasing: bool,
 
     // --- Advanced Customization (Phase 10) ---
     // --- Text tool persistence ---
@@ -283,6 +286,7 @@ impl Default for AppSettings {
             persist_layers_panel_right_offset: None,
             persist_layers_panel_size: None,
             persist_history_panel_right_offset: None,
+            persist_history_panel_size: None,
             persist_colors_panel_left_offset: None,
             persist_palette_panel_pos: None,
             persist_palette_panel_left_offset: None,
@@ -324,6 +328,8 @@ impl Default for AppSettings {
             persisted_shapes_fill_mode: "filled".to_string(),
             persisted_shapes_anti_alias: true,
             persisted_shapes_corner_radius: 10.0,
+            persisted_move_interpolation: "bilinear".to_string(),
+            persisted_move_anti_aliasing: true,
 
             // Advanced Customization defaults
             persisted_text_font_family: String::new(),
@@ -944,6 +950,10 @@ impl AppSettings {
             Self::opt_pair_to_str(self.persist_history_panel_right_offset)
         ));
         content.push_str(&format!(
+            "persist_history_panel_size={}\n",
+            Self::opt_pair_to_str(self.persist_history_panel_size)
+        ));
+        content.push_str(&format!(
             "persist_colors_panel_left_offset={}\n",
             Self::opt_pair_to_str(self.persist_colors_panel_left_offset)
         ));
@@ -1097,6 +1107,14 @@ impl AppSettings {
         content.push_str(&format!(
             "persisted_shapes_corner_radius={}\n",
             self.persisted_shapes_corner_radius
+        ));
+        content.push_str(&format!(
+            "persisted_move_interpolation={}\n",
+            self.persisted_move_interpolation
+        ));
+        content.push_str(&format!(
+            "persisted_move_anti_aliasing={}\n",
+            self.persisted_move_anti_aliasing
         ));
         content.push_str(&format!(
             "persisted_text_font_family={}\n",
@@ -1386,6 +1404,9 @@ impl AppSettings {
                 "persist_history_panel_right_offset" => {
                     s.persist_history_panel_right_offset = Self::str_to_opt_pair(val);
                 }
+                "persist_history_panel_size" => {
+                    s.persist_history_panel_size = Self::str_to_opt_pair(val);
+                }
                 "persist_colors_panel_left_offset" => {
                     s.persist_colors_panel_left_offset = Self::str_to_opt_pair(val);
                 }
@@ -1516,6 +1537,12 @@ impl AppSettings {
                 }
                 "persisted_shapes_corner_radius" => {
                     s.persisted_shapes_corner_radius = val.parse().unwrap_or(10.0);
+                }
+                "persisted_move_interpolation" => {
+                    s.persisted_move_interpolation = val.to_string();
+                }
+                "persisted_move_anti_aliasing" => {
+                    s.persisted_move_anti_aliasing = val == "true";
                 }
                 "persisted_text_font_family" => {
                     s.persisted_text_font_family = val.to_string();

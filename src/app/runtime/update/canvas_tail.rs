@@ -26,7 +26,7 @@ impl PaintFEApp {
         // visible behind the floating shelf container.
         let shelf_margin = 6.0;
         #[allow(deprecated)]
-        egui::Panel::top("tool_shelf_strip")
+        let shelf_resp = egui::Panel::top("tool_shelf_strip")
             .frame(egui::Frame::NONE.inner_margin(egui::Margin::same(shelf_margin as i8)))
             .min_size(30.0) // Allow growth so controls don't get vertically clipped on newer egui metrics
             .show(ctx, |ui| {
@@ -62,6 +62,7 @@ impl PaintFEApp {
                                             .clicked()
                                         {
                                             overlay.interpolation = *interp;
+                                            self.tools_panel.move_interpolation = *interp;
                                         }
                                     }
                                 });
@@ -69,7 +70,12 @@ impl PaintFEApp {
                             ui.add_space(4.0);
 
                             // Anti-aliasing toggle
-                            ui.checkbox(&mut overlay.anti_aliasing, "Anti-aliasing");
+                            if ui
+                                .checkbox(&mut overlay.anti_aliasing, "Anti-aliasing")
+                                .changed()
+                            {
+                                self.tools_panel.move_anti_aliasing = overlay.anti_aliasing;
+                            }
 
                             ui.add_space(4.0);
 
@@ -112,6 +118,7 @@ impl PaintFEApp {
                     });
                 });
             });
+        self.remember_ui_cursor_rect(shelf_resp.response.rect);
 
         // Process pending brush tip actions from context bar
         if self.tools_panel.pending_open_add_brush_tip {
@@ -211,6 +218,7 @@ impl PaintFEApp {
                 };
                 painter.add(egui::Shape::mesh(mesh));
 
+                let pointer_over_blocking_ui = self.pointer_over_cursor_blocking_ui(ctx);
                 if let Some(project) = self.projects.get_mut(self.active_project_index) {
                     let primary_color_f32 = self.colors_panel.get_primary_color_f32();
                     let secondary_color_f32 = self.colors_panel.get_secondary_color_f32();
@@ -265,6 +273,7 @@ impl PaintFEApp {
                         self.filter_ops_start_time,
                         self.io_ops_start_time,
                         &self.filter_status_description,
+                        pointer_over_blocking_ui,
                         live_window_resize,
                     );
                     if let Some(overlay) = self.paste_overlay.as_mut()
@@ -282,7 +291,7 @@ impl PaintFEApp {
                         match action {
                             crate::canvas::PasteAction::Commit
                             | crate::canvas::PasteAction::CommitAndSelect => {
-                                // Commit — always a fresh snapshot (extraction is already in history).
+                                // Commit the overlay as one undoable operation.
                                 let select_mask = self.paste_overlay.as_ref().map(|overlay| {
                                     overlay.solid_bounds_selection_mask(
                                         project.canvas_state.width,
@@ -303,12 +312,32 @@ impl PaintFEApp {
                                     } else {
                                         "Paste"
                                     };
-                                    let mut cmd =
-                                        SnapshotCommand::new(desc.to_string(), &project.canvas_state);
+                                    let move_before = if self.is_move_pixels_active {
+                                        self.move_pixels_before.take()
+                                    } else {
+                                        None
+                                    };
+                                    let mut cmd = move_before
+                                        .map(|before| (desc.to_string(), before))
+                                        .or_else(|| {
+                                            Some((
+                                                desc.to_string(),
+                                                crate::components::history::CanvasSnapshot::capture(
+                                                    &project.canvas_state,
+                                                ),
+                                            ))
+                                        });
                                     project.canvas_state.clear_preview_state();
                                     overlay.commit(&mut project.canvas_state);
-                                    cmd.set_after(&project.canvas_state);
-                                    project.history.push(Box::new(cmd));
+                                    if let Some((desc, before)) = cmd.take() {
+                                        let after =
+                                            crate::components::history::CanvasSnapshot::capture(
+                                                &project.canvas_state,
+                                            );
+                                        project.history.push(Box::new(
+                                            SnapshotCommand::from_snapshots(desc, before, after),
+                                        ));
+                                    }
                                     project.mark_dirty();
                                 }
                                 self.is_move_pixels_active = false;
@@ -338,8 +367,9 @@ impl PaintFEApp {
                                 self.paste_transform_undo.clear();
                                 self.paste_transform_redo.clear();
                                 if self.is_move_pixels_active {
-                                    // MovePixels: undo the extraction entry we already pushed
-                                    project.history.undo(&mut project.canvas_state);
+                                    if let Some(before) = self.move_pixels_before.take() {
+                                        before.restore_into(&mut project.canvas_state);
+                                    }
                                     self.is_move_pixels_active = false;
                                 }
                                 project.canvas_state.clear_preview_state();
@@ -370,6 +400,7 @@ impl PaintFEApp {
         self.show_floating_colors_panel(ctx, screen_size_changed);
         self.show_floating_palette_panel(ctx, screen_size_changed);
         self.show_floating_script_editor(ctx, screen_size_changed);
+        self.restore_default_cursor_over_ui(ctx);
         if self.palette_reposition_settle_frames > 0 {
             self.palette_reposition_settle_frames -= 1;
         }

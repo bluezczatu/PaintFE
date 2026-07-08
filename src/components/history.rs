@@ -907,6 +907,18 @@ impl SnapshotCommand {
     pub fn set_after(&mut self, state: &CanvasState) {
         self.after = Some(CanvasSnapshot::capture(state));
     }
+
+    pub fn from_snapshots(
+        description: String,
+        before: CanvasSnapshot,
+        after: CanvasSnapshot,
+    ) -> Self {
+        Self {
+            description,
+            before,
+            after: Some(after),
+        }
+    }
 }
 
 impl Command for SnapshotCommand {

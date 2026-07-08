@@ -166,7 +166,6 @@ impl PaintFEApp {
     }
 
     /// Commit the active paste overlay.
-    /// Extraction is already in history (for MovePixels) — this pushes a separate commit entry.
     fn commit_paste_overlay(&mut self) {
         if let Some(overlay) = self.paste_overlay.take() {
             self.paste_transform_undo.clear();
@@ -176,25 +175,44 @@ impl PaintFEApp {
             } else {
                 "Paste"
             };
-            self.do_snapshot_op(desc, |s| {
-                s.clear_preview_state();
-                overlay.commit(s);
-            });
+            let move_before = if self.is_move_pixels_active {
+                self.move_pixels_before.take()
+            } else {
+                None
+            };
+            if let Some(project) = self.active_project_mut() {
+                let before = move_before.unwrap_or_else(|| {
+                    crate::components::history::CanvasSnapshot::capture(&project.canvas_state)
+                });
+                project.canvas_state.clear_preview_state();
+                overlay.commit(&mut project.canvas_state);
+                let after =
+                    crate::components::history::CanvasSnapshot::capture(&project.canvas_state);
+                project.history.push(Box::new(
+                    crate::components::history::SnapshotCommand::from_snapshots(
+                        desc.to_string(),
+                        before,
+                        after,
+                    ),
+                ));
+                project.mark_dirty();
+            }
             self.is_move_pixels_active = false;
         }
     }
 
     /// Cancel the active paste overlay.
-    /// If MovePixels is active, undo the extraction entry to restore original pixels.
+    /// If MovePixels is active, restore the pre-extraction snapshot without pushing history.
     fn cancel_paste_overlay(&mut self) {
         self.paste_overlay = None;
         self.paste_transform_undo.clear();
         self.paste_transform_redo.clear();
         if self.is_move_pixels_active {
-            // Undo the extraction snapshot we already pushed
-            self.commit_pending_tool_history();
+            let before = self.move_pixels_before.take();
             if let Some(project) = self.active_project_mut() {
-                project.history.undo(&mut project.canvas_state);
+                if let Some(before) = before {
+                    before.restore_into(&mut project.canvas_state);
+                }
                 project.canvas_state.clear_preview_state();
             }
             self.is_move_pixels_active = false;

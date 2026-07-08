@@ -1808,6 +1808,8 @@ pub struct ToolsPanel {
     /// Pending async color removal request — consumed by app.rs for spawn_filter_job.
     pending_color_removal: Option<ColorRemovalRequest>,
     pub shapes_state: ShapesToolState,
+    pub move_interpolation: crate::ops::transform::Interpolation,
+    pub move_anti_aliasing: bool,
     pub pending_open_add_shape: bool,
     pub pending_delete_shape: Option<String>,
     last_tracked_layer_index: usize,
@@ -1858,6 +1860,7 @@ pub struct ToolsPanel {
     pub pending_delete_brush_tip: Option<String>,
     /// Right-click context menu state for brush tip picker: (tip_name, screen_pos_x, screen_pos_y)
     pub brush_tip_context_menu: Option<(String, f32, f32)>,
+    canvas_pointer_active: bool,
 }
 
 impl Default for ToolsPanel {
@@ -1887,6 +1890,8 @@ impl Default for ToolsPanel {
             smudge_state: SmudgeState::default(),
             pending_color_removal: None,
             shapes_state: ShapesToolState::default(),
+            move_interpolation: crate::ops::transform::Interpolation::Bilinear,
+            move_anti_aliasing: true,
             pending_open_add_shape: false,
             pending_delete_shape: None,
             last_tracked_layer_index: 0,
@@ -1912,6 +1917,7 @@ impl Default for ToolsPanel {
             pending_open_add_brush_tip: false,
             pending_delete_brush_tip: None,
             brush_tip_context_menu: None,
+            canvas_pointer_active: false,
         }
     }
 }

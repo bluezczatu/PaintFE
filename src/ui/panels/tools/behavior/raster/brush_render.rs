@@ -49,49 +49,36 @@ impl ToolsPanel {
         }
     }
 
-    /// Compute brush alpha with optional smoothstep interpolation
-    /// When anti_aliased is false, returns hard binary 0.0 or 1.0 based on radius only
+    /// Compute brush alpha as material falloff multiplied by geometric coverage.
+    /// Hardness controls opacity at the edge; anti-aliasing only smooths geometry.
     fn compute_brush_alpha(&self, dist: f32, radius: f32) -> f32 {
-        // Non-AA mode: hard binary edge at radius
-        if !self.properties.anti_aliased {
-            return if dist <= radius { 1.0 } else { 0.0 };
-        }
-
-        // Anti-aliased mode with hardness-based soft edge:
-        // 1. Remap hardness range for much softer low-hardness brushes.
-        //    UI 0% → 0.02 internal (extremely soft, airbrush-like)
-        //    UI 100% → 1.0 internal (hard edge)
-        let remapped_hardness = 0.02 + (self.properties.hardness * 0.98);
-        let safe_hardness = remapped_hardness.clamp(0.0, 0.99); // Clamp to prevent div by zero
-
-        // For small brushes (radius < 3), force extra AA by extending beyond nominal radius
-        let (effective_radius, fade_width) = if radius < 3.0 {
-            // For tiny brushes, ensure at least 1.5px of AA range
-            let aa_extend = 1.5;
-            let extended_radius = radius + aa_extend;
-            let fade = aa_extend + (radius * (1.0 - safe_hardness));
-            (extended_radius, fade)
-        } else {
-            // Normal brushes: fade within the brush radius
-            let fade = (radius * (1.0 - safe_hardness)).max(1.0);
-            (radius, fade)
-        };
-
-        let solid_radius = effective_radius - fade_width;
-
-        if dist <= solid_radius {
-            return 1.0;
-        } else if dist >= effective_radius {
+        if radius <= 0.0 {
             return 0.0;
         }
 
-        // 2. Normalize distance within the fade region (0.0 to 1.0)
-        let t = (dist - solid_radius) / fade_width;
+        let safe_hardness = self.properties.hardness.clamp(0.0, 1.0);
+        let t = (dist / radius).clamp(0.0, 1.0);
+        let falloff = t * t * (3.0 - 2.0 * t);
+        let material_alpha = 1.0 + (safe_hardness - 1.0) * falloff;
 
-        // 3. Apply Smoothstep: t * t * (3 - 2t)
-        // Invert t first because we want 1.0 at the inner edge and 0.0 at outer
-        let x = 1.0 - t.clamp(0.0, 1.0);
-        x * x * (3.0 - 2.0 * x)
+        let coverage = if self.properties.anti_aliased {
+            let edge0 = radius + 0.5;
+            let edge1 = radius - 0.5;
+            if dist <= edge1 {
+                1.0
+            } else if dist >= edge0 {
+                0.0
+            } else {
+                let x = ((dist - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+                x * x * (3.0 - 2.0 * x)
+            }
+        } else if dist <= radius {
+            1.0
+        } else {
+            0.0
+        };
+
+        material_alpha * coverage
     }
 
     /// Compute alpha specifically for line tool with forced soft edges
@@ -209,13 +196,19 @@ impl ToolsPanel {
         if radius_sq < 0.001 {
             return;
         }
+        let draw_radius = if self.properties.anti_aliased {
+            radius + 0.5
+        } else {
+            radius
+        };
+        let draw_radius_sq = draw_radius * draw_radius;
+        let use_direct_alpha = draw_radius > radius;
         let inv_radius_sq = 1.0 / radius_sq;
 
-        let _r_ceil = radius.ceil() as i32;
-        let min_x = ((cx - radius).max(0.0)) as u32;
-        let max_x = ((cx + radius) as u32).min(width.saturating_sub(1));
-        let min_y = ((cy - radius).max(0.0)) as u32;
-        let max_y = ((cy + radius) as u32).min(height.saturating_sub(1));
+        let min_x = ((cx - draw_radius).floor().max(0.0)) as u32;
+        let max_x = ((cx + draw_radius).ceil() as u32).min(width.saturating_sub(1));
+        let min_y = ((cy - draw_radius).floor().max(0.0)) as u32;
+        let max_y = ((cy + draw_radius).ceil() as u32).min(height.saturating_sub(1));
         if min_x > max_x || min_y > max_y {
             return;
         }
@@ -298,7 +291,7 @@ impl ToolsPanel {
                     chunk_base_y as f32 + ly1 as f32 - 1.0,
                 );
                 let nd = (near_x - cx) * (near_x - cx) + (near_y - cy) * (near_y - cy);
-                if nd > radius_sq {
+                if nd > draw_radius_sq {
                     continue;
                 }
 
@@ -329,13 +322,19 @@ impl ToolsPanel {
 
                         let dx = global_x as f32 - cx;
                         let dist_sq = dx * dx + dy_sq;
-                        if dist_sq > radius_sq {
+                        if dist_sq > draw_radius_sq {
                             continue;
                         }
 
-                        // B6: LUT lookup — replaces sqrt + smoothstep
-                        let lut_idx = (dist_sq * inv_radius_sq * 255.0).min(255.0) as usize;
-                        let geom_alpha_u8 = lut[lut_idx];
+                        let geom_alpha_u8 = if use_direct_alpha {
+                            (self.compute_brush_alpha(dist_sq.sqrt(), radius) * 255.0)
+                                .round()
+                                .min(255.0) as u8
+                        } else {
+                            // B6: LUT lookup — replaces sqrt + smoothstep
+                            let lut_idx = (dist_sq * inv_radius_sq * 255.0).min(255.0) as usize;
+                            lut[lut_idx]
+                        };
                         if geom_alpha_u8 == 0 {
                             continue;
                         }

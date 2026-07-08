@@ -8,6 +8,7 @@ static class PdnReader
     private const int MaxDimension = 25_000;
     private const int MaxLayers = 256;
     private const long MaxDecodedBytes = 1024L * 1024 * 1024;
+    private const int MaxStoredChunkBytes = 64 * 1024 * 1024;
 
     public static PdnDocument Read(string path)
     {
@@ -90,7 +91,9 @@ static class PdnReader
         {
             var number = checked((int)ReadUInt32BigEndian(stream));
             var storedLength = checked((int)ReadUInt32BigEndian(stream));
-            if (number < 0 || number >= chunkCount || found[number] || storedLength < 0)
+            if (number < 0 || number >= chunkCount || found[number] || storedLength < 0 ||
+                storedLength > MaxStoredChunkBytes ||
+                stream.CanSeek && storedLength > stream.Length - stream.Position)
                 throw new InvalidDataException("Invalid PDN chunk table");
             found[number] = true;
             var stored = new byte[storedLength];

@@ -155,6 +155,7 @@ impl PaintFEApp {
             pending_paste_request: None,
             paste_transform_undo: Vec::new(),
             paste_transform_redo: Vec::new(),
+            move_pixels_before: None,
             move_sel_dragging: false,
             move_sel_last_canvas: None,
             move_sel_handle: None,
@@ -164,10 +165,12 @@ impl PaintFEApp {
             layers_panel_right_offset: None,
             layers_panel_size: None,
             history_panel_right_offset: None,
+            history_panel_size: None,
             colors_panel_left_offset: None,
             palette_panel_pos: None,
             tools_panel_pos: None,
             last_screen_size: (0.0, 0.0),
+            ui_cursor_blocking_rects: Vec::new(),
             is_move_pixels_active: false,
             is_pointer_over_layers_panel: false,
             filter_sender,
@@ -238,6 +241,7 @@ impl PaintFEApp {
         app.layers_panel_right_offset = app.settings.persist_layers_panel_right_offset;
         app.layers_panel_size = app.settings.persist_layers_panel_size;
         app.history_panel_right_offset = app.settings.persist_history_panel_right_offset;
+        app.history_panel_size = app.settings.persist_history_panel_size;
         app.colors_panel_left_offset = app.settings.persist_colors_panel_left_offset;
         app.palette_panel_pos = app.settings.persist_palette_panel_pos.or_else(|| {
             app.settings
@@ -551,6 +555,8 @@ impl PaintFEApp {
             });
         }
 
+        let move_interpolation = self.tools_panel.move_interpolation;
+        let move_anti_aliasing = self.tools_panel.move_anti_aliasing;
         if let Some(project) = self.active_project_mut() {
             let (cw, ch) = (project.canvas_state.width, project.canvas_state.height);
             // Performance: if overwrite mode is requested but the source image has no
@@ -560,7 +566,7 @@ impl PaintFEApp {
             let needs_overwrite = request.overwrite_transparent_pixels
                 && (request.overwrite_mask.is_some()
                     || request.image.pixels().any(|p| p[3] < 255));
-            let overlay = if request.use_source_center {
+            let mut overlay = if request.use_source_center {
                 let center = request
                     .source_center
                     .unwrap_or(egui::Pos2::new(cw as f32 / 2.0, ch as f32 / 2.0));
@@ -579,6 +585,8 @@ impl PaintFEApp {
                 o.overwrite_mask = request.overwrite_mask;
                 o
             };
+            overlay.interpolation = move_interpolation;
+            overlay.anti_aliasing = move_anti_aliasing;
 
             project.canvas_state.clear_selection();
             self.paste_overlay = Some(overlay);
@@ -718,6 +726,14 @@ impl PaintFEApp {
             .settings
             .persisted_shapes_corner_radius
             .clamp(0.0, 1000.0);
+        self.tools_panel.move_interpolation =
+            match self.settings.persisted_move_interpolation.as_str() {
+                "nearest" => crate::ops::transform::Interpolation::Nearest,
+                "bicubic" => crate::ops::transform::Interpolation::Bicubic,
+                "lanczos3" => crate::ops::transform::Interpolation::Lanczos3,
+                _ => crate::ops::transform::Interpolation::Bilinear,
+            };
+        self.tools_panel.move_anti_aliasing = self.settings.persisted_move_anti_aliasing;
         self.tools_panel.text_state.font_family = crate::ops::text::resolve_font_family_preference(
             &self.settings.persisted_text_font_family,
         );
@@ -837,6 +853,14 @@ impl PaintFEApp {
             .corner_radius
             .to_bits()
             .hash(&mut hasher);
+        match self.tools_panel.move_interpolation {
+            crate::ops::transform::Interpolation::Nearest => 0u8,
+            crate::ops::transform::Interpolation::Bilinear => 1u8,
+            crate::ops::transform::Interpolation::Bicubic => 2u8,
+            crate::ops::transform::Interpolation::Lanczos3 => 3u8,
+        }
+        .hash(&mut hasher);
+        self.tools_panel.move_anti_aliasing.hash(&mut hasher);
         self.tools_panel.text_state.font_family.hash(&mut hasher);
 
         hasher.finish()
@@ -878,6 +902,7 @@ impl PaintFEApp {
         hash_opt_pair(self.layers_panel_right_offset, &mut hasher);
         hash_opt_pair(self.layers_panel_size, &mut hasher);
         hash_opt_pair(self.history_panel_right_offset, &mut hasher);
+        hash_opt_pair(self.history_panel_size, &mut hasher);
         hash_opt_pair(self.colors_panel_left_offset, &mut hasher);
         hash_opt_pair(self.palette_panel_pos, &mut hasher);
         hash_opt_pair(self.script_right_offset, &mut hasher);
@@ -910,6 +935,7 @@ impl PaintFEApp {
         self.settings.persist_layers_panel_right_offset = self.layers_panel_right_offset;
         self.settings.persist_layers_panel_size = self.layers_panel_size;
         self.settings.persist_history_panel_right_offset = self.history_panel_right_offset;
+        self.settings.persist_history_panel_size = self.history_panel_size;
         self.settings.persist_colors_panel_left_offset = self.colors_panel_left_offset;
         self.settings.persist_palette_panel_pos = self.palette_panel_pos;
         self.settings.persist_palette_recent_colors = self.palette_panel.serialize_recent_colors();
@@ -1001,6 +1027,14 @@ impl PaintFEApp {
         .to_string();
         self.settings.persisted_shapes_anti_alias = self.tools_panel.shapes_state.anti_alias;
         self.settings.persisted_shapes_corner_radius = self.tools_panel.shapes_state.corner_radius;
+        self.settings.persisted_move_interpolation = match self.tools_panel.move_interpolation {
+            crate::ops::transform::Interpolation::Nearest => "nearest",
+            crate::ops::transform::Interpolation::Bilinear => "bilinear",
+            crate::ops::transform::Interpolation::Bicubic => "bicubic",
+            crate::ops::transform::Interpolation::Lanczos3 => "lanczos3",
+        }
+        .to_string();
+        self.settings.persisted_move_anti_aliasing = self.tools_panel.move_anti_aliasing;
         self.settings.persisted_text_font_family = self.tools_panel.text_state.font_family.clone();
 
         self.settings.save();

@@ -9,6 +9,12 @@ use std::time::Duration;
 
 use crate::canvas::{BlendMode, CanvasState, Layer, TiledImage};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 const MAX_HEADER: usize = 16 * 1024 * 1024;
 
 #[derive(Deserialize)]
@@ -38,12 +44,16 @@ pub fn load_pdn(path: &Path) -> Result<CanvasState, String> {
 Build or install the host, then try again. ({error})"
         )
     })?;
-    let mut child = Command::new(host)
+    let mut command = Command::new(host);
+    command
         .arg("--read-pdn")
         .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let mut child = command
         .spawn()
         .map_err(|error| format!("Failed to start PDN reader: {error}"))?;
     let stdout = child.stdout.take().ok_or("PDN reader stdout unavailable")?;

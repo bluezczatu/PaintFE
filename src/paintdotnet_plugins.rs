@@ -23,6 +23,12 @@ use crate::ops::dialogs::{
 pub const PROFILE: &str = "legacy-3.5-cpu-v1";
 const PROTOCOL_VERSION: u32 = 1;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginProperty {
@@ -226,7 +232,32 @@ impl PluginManager {
             let path = entry.path().join("manifest.json");
             let Ok(data) = fs::read(&path) else { continue };
             match serde_json::from_slice::<PluginManifest>(&data) {
-                Ok(plugin) => manager.plugins.push(plugin),
+                Ok(mut plugin) => {
+                    if plugin.trusted || plugin.enabled {
+                        match file_sha256(Path::new(&plugin.source_file)) {
+                            Ok(hash) if hash == plugin.sha256 => {}
+                            Ok(_) => {
+                                plugin.trusted = false;
+                                plugin.enabled = false;
+                                plugin.error = Some(
+                                    "Plugin file changed; review and trust it again.".to_string(),
+                                );
+                                if let Some(package) = Path::new(&plugin.source_file).parent() {
+                                    let _ = save_manifest(package, &plugin);
+                                }
+                            }
+                            Err(error) => {
+                                plugin.trusted = false;
+                                plugin.enabled = false;
+                                plugin.error = Some(error);
+                                if let Some(package) = Path::new(&plugin.source_file).parent() {
+                                    let _ = save_manifest(package, &plugin);
+                                }
+                            }
+                        }
+                    }
+                    manager.plugins.push(plugin);
+                }
                 Err(error) => manager.last_error = Some(format!("{}: {error}", path.display())),
             }
         }
@@ -242,6 +273,31 @@ impl PluginManager {
 
     pub fn rescan(&mut self) {
         for plugin in &mut self.plugins {
+            if !plugin.trusted {
+                plugin.enabled = false;
+                continue;
+            }
+            match file_sha256(Path::new(&plugin.source_file)) {
+                Ok(hash) if hash == plugin.sha256 => {}
+                Ok(_) => {
+                    plugin.trusted = false;
+                    plugin.enabled = false;
+                    plugin.error =
+                        Some("Plugin file changed; review and trust it again.".to_string());
+                    if let Some(package) = Path::new(&plugin.source_file).parent() {
+                        let _ = save_manifest(package, plugin);
+                    }
+                    continue;
+                }
+                Err(error) => {
+                    plugin.enabled = false;
+                    plugin.error = Some(error);
+                    if let Some(package) = Path::new(&plugin.source_file).parent() {
+                        let _ = save_manifest(package, plugin);
+                    }
+                    continue;
+                }
+            }
             match describe(Path::new(&plugin.source_file)) {
                 Ok(response) => {
                     plugin.name = response.name.unwrap_or_else(|| plugin.name.clone());
@@ -263,8 +319,7 @@ impl PluginManager {
 
     pub fn import_files(paths: &[PathBuf]) -> Result<PluginManifest, String> {
         let primary = paths.first().ok_or_else(|| "No DLL selected".to_string())?;
-        let bytes = fs::read(primary).map_err(|error| error.to_string())?;
-        let hash = format!("{:x}", Sha256::digest(&bytes));
+        let hash = file_sha256(primary)?;
         let stem = primary
             .file_stem()
             .and_then(|s| s.to_str())
@@ -293,36 +348,19 @@ impl PluginManager {
                 .file_name()
                 .ok_or_else(|| "Invalid DLL filename".to_string())?,
         );
-        let description = describe(&installed);
-        let mut manifest = match description {
-            Ok(response) => PluginManifest {
-                profile: PROFILE.to_string(),
-                source_file: installed.to_string_lossy().into_owned(),
-                sha256: hash,
-                trusted: false,
-                enabled: false,
-                name: response.name.unwrap_or_else(|| safe_stem.clone()),
-                category: response.category.unwrap_or_else(|| "Plugins".to_string()),
-                effect_type: response.effect_type.unwrap_or_default(),
-                properties: response.properties,
-                error: None,
-            },
-            Err(error) => PluginManifest {
-                profile: PROFILE.to_string(),
-                source_file: installed.to_string_lossy().into_owned(),
-                sha256: hash,
-                trusted: false,
-                enabled: false,
-                name: safe_stem,
-                category: "Plugins".to_string(),
-                effect_type: String::new(),
-                properties: Vec::new(),
-                error: Some(error),
-            },
+        let manifest = PluginManifest {
+            profile: PROFILE.to_string(),
+            source_file: installed.to_string_lossy().into_owned(),
+            sha256: hash,
+            trusted: false,
+            enabled: false,
+            name: safe_stem,
+            category: "Plugins".to_string(),
+            effect_type: String::new(),
+            properties: Vec::new(),
+            error: None,
         };
         save_manifest(&package_dir, &manifest)?;
-        // Imported code must be explicitly trusted after its metadata is shown.
-        manifest.trusted = false;
         Ok(manifest)
     }
 
@@ -332,8 +370,36 @@ impl PluginManager {
             .iter_mut()
             .find(|plugin| plugin.sha256 == sha256)
             .ok_or_else(|| "Plugin not found".to_string())?;
-        plugin.trusted = value;
-        plugin.enabled = value && plugin.error.is_none();
+        if value {
+            let path = PathBuf::from(&plugin.source_file);
+            let hash = file_sha256(&path)?;
+            if hash != plugin.sha256 {
+                plugin.trusted = false;
+                plugin.enabled = false;
+                plugin.error = Some("Plugin file changed; review and trust it again.".to_string());
+            } else {
+                match describe(&path) {
+                    Ok(response) => {
+                        plugin.trusted = true;
+                        plugin.enabled = true;
+                        plugin.name = response.name.unwrap_or_else(|| plugin.name.clone());
+                        plugin.category =
+                            response.category.unwrap_or_else(|| "Plugins".to_string());
+                        plugin.effect_type = response.effect_type.unwrap_or_default();
+                        plugin.properties = response.properties;
+                        plugin.error = None;
+                    }
+                    Err(error) => {
+                        plugin.trusted = false;
+                        plugin.enabled = false;
+                        plugin.error = Some(error);
+                    }
+                }
+            }
+        } else {
+            plugin.trusted = false;
+            plugin.enabled = false;
+        }
         let package = Path::new(&plugin.source_file)
             .parent()
             .ok_or_else(|| "Invalid plugin path".to_string())?;
@@ -364,6 +430,7 @@ pub fn plugin_root() -> PathBuf {
 }
 
 pub fn host_path() -> Result<PathBuf, String> {
+    #[cfg(debug_assertions)]
     if let Some(path) = std::env::var_os("PAINTFE_PDN_HOST").map(PathBuf::from)
         && path.is_file()
     {
@@ -398,10 +465,12 @@ pub fn host_path() -> Result<PathBuf, String> {
         directory.join("paintdotnet-host").join(filename),
         development_host.unwrap_or_default(),
     ];
-    candidates
+    let host = candidates
         .into_iter()
         .find(|path| path.is_file())
-        .ok_or_else(|| "Paint.NET compatibility host is not installed".to_string())
+        .ok_or_else(|| "Paint.NET compatibility host is not installed".to_string())?;
+    verify_host_hash(&host)?;
+    Ok(host)
 }
 
 pub fn record_plugin_error(plugin: &PluginManifest, error: &str) {
@@ -487,10 +556,14 @@ fn json_header(
 }
 
 fn call_host(header: Value, pixels: &[u8], timeout: Duration) -> Result<HostResponse, String> {
-    let mut child = Command::new(host_path()?)
+    let mut command = Command::new(host_path()?);
+    command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let mut child = command
         .spawn()
         .map_err(|error| format!("Failed to start plugin host: {error}"))?;
     let header = serde_json::to_vec(&header).map_err(|error| error.to_string())?;
@@ -580,6 +653,35 @@ fn read_response(mut stdout: impl Read) -> Result<HostResponse, String> {
 fn save_manifest(package_dir: &Path, manifest: &PluginManifest) -> Result<(), String> {
     let data = serde_json::to_vec_pretty(manifest).map_err(|error| error.to_string())?;
     fs::write(package_dir.join("manifest.json"), data).map_err(|error| error.to_string())
+}
+
+fn file_sha256(path: &Path) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    Ok(format!("{:x}", Sha256::digest(&bytes)))
+}
+
+fn verify_host_hash(path: &Path) -> Result<(), String> {
+    let sidecar = path.with_extension(format!(
+        "{}sha256",
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    if !sidecar.is_file() {
+        return Ok(());
+    }
+    let expected = fs::read_to_string(&sidecar).map_err(|error| error.to_string())?;
+    let expected = expected
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| "Paint.NET compatibility host checksum is empty".to_string())?;
+    let actual = file_sha256(path)?;
+    if expected.eq_ignore_ascii_case(&actual) {
+        Ok(())
+    } else {
+        Err("Paint.NET compatibility host checksum mismatch".to_string())
+    }
 }
 
 #[cfg(test)]

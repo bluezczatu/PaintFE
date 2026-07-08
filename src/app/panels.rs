@@ -1,4 +1,30 @@
 impl PaintFEApp {
+    fn reset_ui_cursor_blocking_rects(&mut self) {
+        self.ui_cursor_blocking_rects.clear();
+    }
+
+    fn remember_ui_cursor_rect(&mut self, rect: egui::Rect) {
+        if rect.is_positive() {
+            self.ui_cursor_blocking_rects.push(rect);
+        }
+    }
+
+    fn pointer_over_cursor_blocking_ui(&self, ctx: &egui::Context) -> bool {
+        ctx.input(|i| {
+            i.pointer.hover_pos().is_some_and(|pos| {
+                self.ui_cursor_blocking_rects
+                    .iter()
+                    .any(|rect| rect.contains(pos))
+            })
+        })
+    }
+
+    fn restore_default_cursor_over_ui(&self, ctx: &egui::Context) {
+        if self.pointer_over_cursor_blocking_ui(ctx) {
+            ctx.set_cursor_icon(egui::CursorIcon::Default);
+        }
+    }
+
     fn clamp_floating_pos(
         pos_x: f32,
         pos_y: f32,
@@ -93,6 +119,7 @@ impl PaintFEApp {
 
         if let Some(inner_resp) = resp {
             let win_rect = inner_resp.response.rect;
+            self.remember_ui_cursor_rect(win_rect);
             self.tools_panel_pos = Some((win_rect.min.x, win_rect.min.y));
             let hovered =
                 ctx.input(|i| i.pointer.hover_pos().is_some_and(|p| win_rect.contains(p)));
@@ -358,8 +385,18 @@ impl PaintFEApp {
         // so that user drags are remembered and window resizes keep the offset.
         if let Some(inner_resp) = resp {
             let win_rect = inner_resp.response.rect;
+            self.remember_ui_cursor_rect(win_rect);
             self.layers_panel_right_offset = Some((screen_w - win_rect.min.x, win_rect.min.y));
-            self.layers_panel_size = Some((win_rect.width(), win_rect.height()));
+            let observed_size = (win_rect.width().round(), win_rect.height().round());
+            let pointer_down = ctx.input(|i| i.pointer.primary_down());
+            let should_store_size = pointer_down
+                && self.layers_panel_size.is_none_or(|old| {
+                    (old.0 - observed_size.0).abs() >= 4.0
+                        || (old.1 - observed_size.1).abs() >= 4.0
+                });
+            if should_store_size {
+                self.layers_panel_size = Some(observed_size);
+            }
             let hovered =
                 ctx.input(|i| i.pointer.hover_pos().is_some_and(|p| win_rect.contains(p)));
             self.is_pointer_over_layers_panel = hovered;
@@ -382,7 +419,8 @@ impl PaintFEApp {
         let screen_h = screen_rect.max.y;
 
         let first_show = self.history_panel_right_offset.is_none();
-        let panel_size = egui::vec2(200.0, 200.0);
+        let saved_size = self.history_panel_size.unwrap_or((200.0, 200.0));
+        let panel_size = egui::vec2(saved_size.0, saved_size.1);
         let (right_off, y_pos) = self
             .history_panel_right_offset
             .unwrap_or((12.0, screen_rect.center().y - panel_size.y * 0.5));
@@ -431,7 +469,18 @@ impl PaintFEApp {
 
         if let Some(inner_resp) = resp {
             let win_rect = inner_resp.response.rect;
+            self.remember_ui_cursor_rect(win_rect);
             self.history_panel_right_offset = Some((screen_w - win_rect.min.x, win_rect.min.y));
+            let observed_size = (win_rect.width().round(), win_rect.height().round());
+            let pointer_down = ctx.input(|i| i.pointer.primary_down());
+            let should_store_size = pointer_down
+                && self.history_panel_size.is_none_or(|old| {
+                    (old.0 - observed_size.0).abs() >= 4.0
+                        || (old.1 - observed_size.1).abs() >= 4.0
+                });
+            if should_store_size {
+                self.history_panel_size = Some(observed_size);
+            }
             let hovered =
                 ctx.input(|i| i.pointer.hover_pos().is_some_and(|p| win_rect.contains(p)));
             ctx.animate_bool(hover_id, hovered);
@@ -498,6 +547,7 @@ impl PaintFEApp {
 
         if let Some(inner_resp) = resp {
             let win_rect = inner_resp.response.rect;
+            self.remember_ui_cursor_rect(win_rect);
             self.colors_panel_left_offset =
                 Some((win_rect.min.x, screen_h - win_rect.min.y - panel_size.y));
             let hovered =
@@ -602,6 +652,7 @@ impl PaintFEApp {
             });
 
             let win_rect = inner_resp.response.rect;
+            self.remember_ui_cursor_rect(win_rect);
             if self.palette_reposition_settle_frames == 0 {
                 self.palette_panel_pos = Some((win_rect.min.x, win_rect.min.y));
                 self.palette_startup_target_pos = self.palette_panel_pos;
@@ -677,6 +728,7 @@ impl PaintFEApp {
 
         if let Some(inner_resp) = resp {
             let win_rect = inner_resp.response.rect;
+            self.remember_ui_cursor_rect(win_rect);
             self.script_right_offset = Some((screen_w - win_rect.min.x, win_rect.min.y));
             let hovered =
                 ctx.input(|i| i.pointer.hover_pos().is_some_and(|p| win_rect.contains(p)));

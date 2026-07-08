@@ -18,13 +18,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: 1.96.1
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -39,15 +41,18 @@ jobs:
         # (satisfies Microsoft Store policy 10.2.4.1).
         run: cargo build --release
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Publish Paint.NET plugin host
-        run: dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -m:1 -o target/release/paintdotnet-host
+        run: |
+          dotnet restore paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj --locked-mode
+          dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true --no-restore -m:1 -o target/release/paintdotnet-host
+          (Get-FileHash target/release/paintdotnet-host/PaintFE.PaintDotNetHost.exe -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -NoNewline target/release/paintdotnet-host/PaintFE.PaintDotNetHost.exe.sha256
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: PaintFE-windows
           path: |
@@ -60,7 +65,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install system dependencies
         run: |
@@ -78,10 +83,12 @@ jobs:
             pkg-config
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: 1.96.1
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -93,15 +100,15 @@ jobs:
       - name: Build release
         run: cargo build --release
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Publish Paint.NET plugin host
         run: bash paintdotnet-host/publish.sh linux-x64 target/release/paintdotnet-host
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: PaintFE-linux
           path: |
@@ -114,7 +121,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install system dependencies
         run: |
@@ -133,10 +140,12 @@ jobs:
             pkg-config
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: 1.96.1
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -148,9 +157,9 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Publish Paint.NET plugin host
         run: bash paintdotnet-host/publish.sh linux-x64
@@ -159,7 +168,7 @@ jobs:
         run: bash packaging/appimage/build-appimage.sh
 
       - name: Upload AppImage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: PaintFE-appimage
           path: PaintFE-x86_64.AppImage
@@ -170,13 +179,15 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: 1.96.1
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -188,9 +199,9 @@ jobs:
       - name: Build release
         run: cargo build --release
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Publish Paint.NET plugin host
         run: bash paintdotnet-host/publish.sh osx-arm64
@@ -208,7 +219,7 @@ jobs:
             PaintFE-macOS-arm64.dmg
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: PaintFE-macos-arm64
           path: PaintFE-macOS-arm64.dmg
@@ -219,15 +230,16 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
+          toolchain: 1.96.1
           targets: x86_64-apple-darwin
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -239,9 +251,9 @@ jobs:
       - name: Build release (cross-compile for Intel)
         run: cargo build --release --target x86_64-apple-darwin
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Publish Paint.NET plugin host
         run: bash paintdotnet-host/publish.sh osx-x64
@@ -259,7 +271,7 @@ jobs:
             PaintFE-macOS-x86_64.dmg
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: PaintFE-macos-x86_64
           path: PaintFE-macOS-x86_64.dmg
@@ -277,13 +289,15 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: 1.96.1
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -295,12 +309,15 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Publish Paint.NET plugin host
-        run: dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true -m:1 -o target/release/paintdotnet-host
+        run: |
+          dotnet restore paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj --locked-mode
+          dotnet publish paintdotnet-host/src/PaintFE.PaintDotNetHost/PaintFE.PaintDotNetHost.csproj -c Release -r win-x64 --self-contained true --no-restore -m:1 -o target/release/paintdotnet-host
+          (Get-FileHash target/release/paintdotnet-host/PaintFE.PaintDotNetHost.exe -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -NoNewline target/release/paintdotnet-host/PaintFE.PaintDotNetHost.exe.sha256
 
       - name: Generate Store icon assets
         shell: powershell
@@ -345,7 +362,7 @@ jobs:
             pack /d packaging\msix\PackageLayout /p PaintFE.msix /nv
 
       - name: Upload MSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: PaintFE-msix-store-submission
           path: PaintFE.msix
@@ -360,31 +377,31 @@ jobs:
       contents: write
     steps:
       - name: Download Windows binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: PaintFE-windows
           path: dist/windows
 
       - name: Download Linux binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: PaintFE-linux
           path: dist/linux
 
       - name: Download AppImage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: PaintFE-appimage
           path: dist/linux
 
       - name: Download macOS ARM binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: PaintFE-macos-arm64
           path: dist/macos
 
       - name: Download macOS Intel binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: PaintFE-macos-x86_64
           path: dist/macos
@@ -409,7 +426,12 @@ jobs:
       - name: Generate SHA-256 checksums
         run: |
           cd dist
-          sha256sum windows/PaintFE.exe linux/PaintFE linux/PaintFE-x86_64.AppImage \
+          sha256sum windows/PaintFE.exe \
+            windows/paintdotnet-host/PaintFE.PaintDotNetHost.exe \
+            windows/paintdotnet-host/PaintFE.PaintDotNetHost.exe.sha256 \
+            linux/PaintFE linux/PaintFE-x86_64.AppImage \
+            linux/paintdotnet-host/PaintFE.PaintDotNetHost \
+            linux/paintdotnet-host/PaintFE.PaintDotNetHost.sha256 \
             PaintFE-windows-x64.zip PaintFE-linux-x64.tar.gz \
             macos/PaintFE-macOS-arm64.dmg macos/PaintFE-macOS-x86_64.dmg \
             | sed 's|windows/||; s|linux/||; s|macos/||' \
@@ -417,7 +439,7 @@ jobs:
           cat checksums-SHA256.txt
 
       - name: Create release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d
         with:
           name: PaintFE ${{ github.ref_name }}
           draft: false

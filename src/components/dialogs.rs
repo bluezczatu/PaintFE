@@ -627,8 +627,7 @@ impl NewFileDialog {
         dimension_input_active: bool,
         select_all_requested: bool,
     ) {
-        let select_all =
-            select_all_requested && (response.has_focus() || dimension_input_active);
+        let select_all = select_all_requested && (response.has_focus() || dimension_input_active);
         if !select_all {
             return;
         }

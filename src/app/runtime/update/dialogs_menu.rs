@@ -2,6 +2,7 @@ include!("dialogs_menu/modal_flow.rs");
 
 impl PaintFEApp {
     fn show_runtime_dialogs_menu(&mut self, ctx: &egui::Context) {
+        self.reset_ui_cursor_blocking_rects();
         let modal_open = self.handle_runtime_modal_flow(ctx);
 
         // --- Top Menu Bar ---
@@ -1799,6 +1800,7 @@ impl PaintFEApp {
         // Bottom line below menu bar
         {
             let menu_rect = menu_resp.response.rect;
+            self.remember_ui_cursor_rect(menu_rect);
             let line_color = self.theme.border_color;
             let painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Background,
@@ -2467,6 +2469,7 @@ impl PaintFEApp {
         // Thin bottom border on toolbar -- subtle divider (lighter than border_color)
         {
             let toolbar_rect = toolbar_resp.response.rect;
+            self.remember_ui_cursor_rect(toolbar_rect);
             let screen_rect = ctx.content_rect();
             let line_color = match self.theme.mode {
                 crate::theme::ThemeMode::Dark => egui::Color32::from_white_alpha(12),
