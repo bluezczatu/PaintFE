@@ -6,6 +6,28 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ---
 
+## [1.3.2] - 2026-07-08
+
+### Added
+- Added experimental Paint.NET `.pdn` import support.
+- Added experimental Paint.NET legacy effect/plugin DLL support with explicit trust confirmation, exact-file hash checks, and host sidecar validation.
+- Added a Windows portable release workflow and pinned/locked release tooling.
+
+### Changed
+- Improved brush hardness so hardness controls material alpha falloff while preserving anti-aliased edges.
+- Preserved Move Selection interpolation and anti-aliasing settings between uses.
+
+### Fixed
+- Fixed brush hardness behavior at small brush sizes.
+- Fixed canvas tools drawing or acting behind floating/top UI controls.
+- Fixed Move Pixels undo so extraction and commit undo as one operation.
+- Fixed layer/settings UI persistence behavior.
+- Fixed transient console window flashes during `.pdn` import on Windows.
+
+### Security
+- Hardened Paint.NET plugin loading so untrusted or swapped DLLs require confirmation before use.
+- Restricted release and host restore behavior with pinned toolchain and NuGet lockfiles.
+
 ## [1.3.1] - 2026-06-10
 
 ### Added
