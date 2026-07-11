@@ -524,6 +524,41 @@ pub struct SelectionToolState {
     pub right_click_drag: bool,
     /// Effective mode locked at drag-start (may differ from `mode` when modifier keys override).
     pub drag_effective_mode: SelectionMode,
+    /// Optional persistent width:height constraint for rectangular selections.
+    pub aspect_ratio_input: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SelectionAspectRatio {
+    Fixed(f32),
+    Image,
+}
+
+pub fn parse_selection_aspect_ratio(
+    input: &str,
+) -> Result<Option<SelectionAspectRatio>, &'static str> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(None);
+    }
+    if input.eq_ignore_ascii_case("image") {
+        return Ok(Some(SelectionAspectRatio::Image));
+    }
+
+    let Some((width, height)) = input.split_once(':') else {
+        return Err("Enter width:height or image");
+    };
+    if height.contains(':') {
+        return Err("Enter width:height or image");
+    }
+    let (Ok(width), Ok(height)) = (width.trim().parse::<f32>(), height.trim().parse::<f32>()) else {
+        return Err("Enter width:height or image");
+    };
+    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+        return Err("Enter positive width:height values");
+    }
+
+    Ok(Some(SelectionAspectRatio::Fixed(width / height)))
 }
 
 #[derive(Clone, Debug)]

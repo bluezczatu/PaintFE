@@ -476,8 +476,10 @@ mod tests {
     #[test]
     fn color_to_alpha_preserves_existing_alpha_ratio() {
         let img = RgbaImage::from_pixel(1, 1, Rgba([255, 0, 0, 128]));
-        let mut settings = ColorToAlphaSettings::default();
-        settings.strength = 0.5;
+        let settings = ColorToAlphaSettings {
+            strength: 0.5,
+            ..Default::default()
+        };
         let out = color_to_alpha_core(&img, &settings, None);
         let p = out.get_pixel(0, 0);
         assert!(p[3] > 0 && p[3] < 128);

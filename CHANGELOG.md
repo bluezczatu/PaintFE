@@ -6,6 +6,11 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ---
 
+## [1.3.6] - 2026-07-11
+
+### Added
+- Added locked aspect ratios for Rectangle Select. Enter ratios such as `3:4` or `16:9`, or use `image` to match the current canvas ratio. Closes #102.
+
 ## [1.3.5] - 2026-07-10
 
 ### Changed

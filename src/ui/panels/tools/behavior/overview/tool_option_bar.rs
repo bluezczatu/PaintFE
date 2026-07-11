@@ -1128,6 +1128,23 @@ impl ToolsPanel {
                 }
             });
 
+        if self.active_tool == Tool::RectangleSelect {
+            ui.separator();
+
+            ui.label("Aspect ratio:");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.selection_state.aspect_ratio_input)
+                    .desired_width(72.0)
+                    .hint_text("3:4"),
+            )
+            .on_hover_text(
+                "Lock rectangular selections to width:height. Use image for the canvas ratio.",
+            );
+            if let Err(error) = parse_selection_aspect_ratio(&self.selection_state.aspect_ratio_input) {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+        }
+
         ui.separator();
 
         self.show_sel_modify_controls(ui);

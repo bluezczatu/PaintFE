@@ -86,12 +86,31 @@ impl ToolsPanel {
                 {
                     let mut end = Pos2::new(pos_f.0, pos_f.1);
 
-                    // Shift => constrain to 1:1 aspect ratio (square / circle)
-                    if shift_held && let Some(start) = self.selection_state.drag_start {
-                        let dx = end.x - start.x;
-                        let dy = end.y - start.y;
-                        let side = dx.abs().max(dy.abs());
-                        end = Pos2::new(start.x + side * dx.signum(), start.y + side * dy.signum());
+                    if let Some(start) = self.selection_state.drag_start {
+                        let aspect_ratio = if shift_held {
+                            Some(1.0)
+                        } else if self.active_tool == Tool::RectangleSelect {
+                            parse_selection_aspect_ratio(&self.selection_state.aspect_ratio_input)
+                                .ok()
+                                .flatten()
+                                .map(|ratio| match ratio {
+                                    SelectionAspectRatio::Fixed(ratio) => ratio,
+                                    SelectionAspectRatio::Image => {
+                                        canvas_state.width as f32 / canvas_state.height.max(1) as f32
+                                    }
+                                })
+                        } else {
+                            None
+                        };
+                        if let Some(aspect_ratio) = aspect_ratio {
+                            end = constrain_selection_aspect(
+                                start,
+                                end,
+                                aspect_ratio,
+                                canvas_state.width,
+                                canvas_state.height,
+                            );
+                        }
                     }
                     self.selection_state.drag_end = Some(end);
                     ui.ctx().request_repaint();
@@ -348,5 +367,87 @@ impl ToolsPanel {
             // ================================================================
             _ => {}
         }
+    }
+}
+
+fn constrain_selection_aspect(
+    start: Pos2,
+    end: Pos2,
+    aspect_ratio: f32,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Pos2 {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    if dx == 0.0 && dy == 0.0 {
+        return end;
+    }
+
+    let (mut width, mut height) = (dx.abs(), dy.abs());
+    if width / aspect_ratio >= height {
+        height = width / aspect_ratio;
+    } else {
+        width = height * aspect_ratio;
+    }
+
+    let max_x = canvas_width.saturating_sub(1) as f32;
+    let max_y = canvas_height.saturating_sub(1) as f32;
+    if start.x >= 0.0 && start.x <= max_x && start.y >= 0.0 && start.y <= max_y {
+        let available_width = if dx >= 0.0 { max_x - start.x } else { start.x };
+        let available_height = if dy >= 0.0 { max_y - start.y } else { start.y };
+        let scale = (available_width / width)
+            .min(available_height / height)
+            .min(1.0);
+        if scale.is_finite() {
+            width *= scale.max(0.0);
+            height *= scale.max(0.0);
+        }
+    }
+
+    Pos2::new(
+        start.x + width * dx.signum(),
+        start.y + height * dy.signum(),
+    )
+}
+
+#[cfg(test)]
+mod selection_aspect_ratio_tests {
+    use super::*;
+
+    #[test]
+    fn parses_selection_aspect_ratios() {
+        assert_eq!(parse_selection_aspect_ratio(""), Ok(None));
+        assert_eq!(
+            parse_selection_aspect_ratio(" 16 : 9 "),
+            Ok(Some(SelectionAspectRatio::Fixed(16.0 / 9.0)))
+        );
+        assert_eq!(
+            parse_selection_aspect_ratio("IMAGE"),
+            Ok(Some(SelectionAspectRatio::Image))
+        );
+        assert!(parse_selection_aspect_ratio("16x9").is_err());
+        assert!(parse_selection_aspect_ratio("0:9").is_err());
+    }
+
+    #[test]
+    fn constrains_selection_aspect_and_canvas_edge() {
+        let end = constrain_selection_aspect(
+            Pos2::new(10.0, 10.0),
+            Pos2::new(90.0, 20.0),
+            4.0 / 3.0,
+            100,
+            100,
+        );
+        assert_eq!(end, Pos2::new(90.0, 70.0));
+
+        let end = constrain_selection_aspect(
+            Pos2::new(80.0, 80.0),
+            Pos2::new(99.0, 99.0),
+            16.0 / 9.0,
+            100,
+            100,
+        );
+        assert!((end.x - 99.0).abs() < f32::EPSILON);
+        assert!((end.y - 90.6875).abs() < f32::EPSILON);
     }
 }
