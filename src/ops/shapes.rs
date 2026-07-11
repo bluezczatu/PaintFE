@@ -1,4 +1,4 @@
-use rayon::prelude::*;
+use crate::par_compat::*;
 
 #[derive(Clone, Debug)]
 pub struct CustomShapeData {

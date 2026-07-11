@@ -246,6 +246,7 @@ impl GpuRenderer {
     /// Create a GPU renderer.  Tries hardware first, then software fallback.
     /// Panics only if even the software rasterizer is unavailable (should not
     /// happen on any modern OS).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(preferred_gpu: &str) -> Self {
         Self::try_new(preferred_gpu).unwrap_or_else(|| {
             eprintln!(
@@ -257,8 +258,23 @@ impl GpuRenderer {
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn try_new(preferred_gpu: &str) -> Option<Self> {
         let ctx = GpuContext::new(preferred_gpu)?;
+        Some(Self::from_context(ctx))
+    }
+
+    /// Web entry point: build a renderer from eframe's own wgpu device
+    /// (see `GpuContext::from_egui_render_state`) instead of requesting a
+    /// second adapter, which can't be done synchronously in the browser.
+    #[cfg(target_arch = "wasm32")]
+    pub fn new_for_web(rs: &eframe::egui_wgpu::RenderState) -> Self {
+        Self::from_context(GpuContext::from_egui_render_state(rs))
+    }
+
+    /// Build a renderer from an already-initialized `GpuContext` — used on
+    /// web to reuse eframe's device instead of requesting a fresh one.
+    pub fn from_context(ctx: GpuContext) -> Self {
         let compositor = Compositor::new(&ctx.device);
         let blur_pipeline = GpuBlurPipeline::new(&ctx.device);
         let bc_pipeline = GpuBrightnessContrastPipeline::new(&ctx.device);
@@ -273,7 +289,7 @@ impl GpuRenderer {
         let mesh_warp_disp_pipeline = GpuMeshWarpDisplacementPipeline::new(&ctx.device);
         let mipmap_pipeline = MipmapPipeline::new(&ctx.device);
 
-        Some(Self {
+        Self {
             ctx,
             compositor,
             blur_pipeline,
@@ -299,7 +315,7 @@ impl GpuRenderer {
             cached_staging_buf: None,
             async_readback: AsyncReadback::new(),
             available: true,
-        })
+        }
     }
 
     pub fn adapter_name(&self) -> &str {

@@ -129,6 +129,10 @@ pub struct PaintFEApp {
     new_file_dialog: NewFileDialog,
     save_file_dialog: SaveFileDialog,
     settings_window: SettingsWindow,
+    /// Web only: first-run welcome/beta-disclaimer popup, shown once per
+    /// browser (dismissal persisted to localStorage).
+    #[cfg(target_arch = "wasm32")]
+    show_welcome_popup: bool,
 
     // Assets & Settings
     assets: Assets,
@@ -234,7 +238,7 @@ pub struct PaintFEApp {
     exit_save_active: bool,
 
     /// Instant of the last auto-save tick (used to measure the interval).
-    last_autosave: std::time::Instant,
+    last_autosave: crate::time_compat::Instant,
 
     /// True only on the very first update() call — used to send a reliable Maximized command.
     first_frame: bool,

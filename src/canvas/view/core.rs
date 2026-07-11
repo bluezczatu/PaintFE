@@ -78,8 +78,21 @@ impl Canvas {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(preferred_gpu: &str) -> Self {
         let gpu_renderer = crate::gpu::GpuRenderer::new(preferred_gpu);
+        Self::from_gpu_renderer(gpu_renderer)
+    }
+
+    /// Web entry point: build the canvas reusing eframe's own wgpu device
+    /// (see `GpuRenderer::new_for_web`) instead of requesting a fresh
+    /// adapter, which can't be done synchronously in the browser.
+    #[cfg(target_arch = "wasm32")]
+    pub fn new_for_web(rs: &eframe::egui_wgpu::RenderState) -> Self {
+        Self::from_gpu_renderer(crate::gpu::GpuRenderer::new_for_web(rs))
+    }
+
+    fn from_gpu_renderer(gpu_renderer: crate::gpu::GpuRenderer) -> Self {
         Self {
             zoom: 1.0,
             pan_offset: Vec2::ZERO,
@@ -110,12 +123,14 @@ impl Canvas {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_without_state() -> Self {
         // Default init with high performance GPU request
         Self::new("high performance")
     }
 
     /// Reinitialise the GPU renderer with a different preferred adapter.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn init_gpu(&mut self, preferred_gpu: &str) {
         self.gpu_renderer = crate::gpu::GpuRenderer::new(preferred_gpu);
     }
@@ -123,6 +138,25 @@ impl Canvas {
     /// Returns `true` ÔÇö GPU rendering is always available (software fallback).
     pub fn has_gpu(&self) -> bool {
         true
+    }
+
+    /// GPU renderer for tools that need a *synchronous* GPU compute + CPU
+    /// readback (Magic Wand, Fill preview, Gradient preview, Liquify, Mesh
+    /// Warp). These block on `device.poll(Wait)`, which cannot complete
+    /// synchronously in the browser (no real thread parking) — the callback
+    /// fires on a later microtask that a blocking wait can never reach. Every
+    /// one of these tools already has a working CPU fallback for when GPU is
+    /// unavailable, so on wasm32 we simply report "no GPU" here to force that
+    /// path instead of hanging. Compositing/painting (the continuous,
+    /// double-buffered `AsyncReadback` path) is unaffected and stays GPU-accelerated.
+    #[cfg(target_arch = "wasm32")]
+    pub fn gpu_renderer_for_sync_readback(&mut self) -> Option<&mut crate::gpu::GpuRenderer> {
+        None
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn gpu_renderer_for_sync_readback(&mut self) -> Option<&mut crate::gpu::GpuRenderer> {
+        Some(&mut self.gpu_renderer)
     }
 
     /// GPU adapter name (for status bar display).
@@ -2089,7 +2123,7 @@ impl Canvas {
                     self.zoom,
                     primary_color_f32,
                     secondary_color_f32,
-                    Some(&mut self.gpu_renderer),
+                    self.gpu_renderer_for_sync_readback(),
                     ui_blocks_canvas_input,
                 );
 
@@ -2163,7 +2197,7 @@ impl Canvas {
             // Always check if gradient settings changed and re-render preview,
             // even when handle_input is blocked by UI (e.g. context bar interactions)
             if tools.active_tool == crate::components::tools::Tool::Gradient {
-                tools.update_gradient_if_dirty(state, Some(&mut self.gpu_renderer));
+                tools.update_gradient_if_dirty(state, self.gpu_renderer_for_sync_readback());
             }
 
             // Always check if text/shape properties changed (color picker, context bar)

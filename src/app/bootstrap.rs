@@ -93,10 +93,46 @@ impl PaintFEApp {
         };
         let ov = settings.build_theme_overrides();
         theme.apply_overrides(&ov);
+        // Floating panels (Tools, Layers, ...) use a near-opaque fill (~94%)
+        // on native, where a compositor-level effect isn't used either — it's
+        // meant to read as "subtle transparency" over the canvas. On web,
+        // that same alpha reads as flat opaque gray instead of "floating",
+        // so make it noticeably more see-through here. The top menu bar,
+        // toolbar, and per-tool context bar are fully opaque by design even
+        // on native (`Color32::from_rgb`, alpha=255) — but users expect the
+        // same "floating over the canvas" look there too, so give those the
+        // same treatment on web.
+        #[cfg(target_arch = "wasm32")]
+        {
+            fn make_translucent(c: egui::Color32) -> egui::Color32 {
+                let alpha = (c.a() as u32 * 3 / 4).min(190) as u8;
+                let scale = |channel: u8| (channel as u16 * alpha as u16 / 255) as u8;
+                egui::Color32::from_rgba_premultiplied(
+                    scale(c.r()),
+                    scale(c.g()),
+                    scale(c.b()),
+                    alpha,
+                )
+            }
+            theme.floating_window_bg = make_translucent(theme.floating_window_bg);
+            theme.toolbar_bg = make_translucent(theme.toolbar_bg);
+            theme.menu_bg = make_translucent(theme.menu_bg);
+            theme.tool_shelf_bg = make_translucent(theme.tool_shelf_bg);
+        }
         theme.apply(&cc.egui_ctx);
         // Disable egui's built-in Ctrl+/Ctrl- keyboard zoom so it doesn't
         // intercept Ctrl++ before our canvas-zoom keybind handler fires.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        // Give the web file-picker bridge a way to wake the render loop once
+        // an async file read finishes (it runs outside egui's normal
+        // input-driven update cycle).
+        #[cfg(target_arch = "wasm32")]
+        crate::web_bridge::set_egui_context(cc.egui_ctx.clone());
+        // Listen for the browser's native paste event so Ctrl+V can pull an
+        // image from the OS clipboard (there's no synchronous clipboard-read
+        // API available to egui's input handling on web).
+        #[cfg(target_arch = "wasm32")]
+        crate::ops::clipboard::install_paste_listener(cc.egui_ctx.clone());
 
         // Initialize with one default project (or empty if disabled in settings)
         let (initial_projects, initial_counter) = if settings.create_canvas_on_startup {
@@ -129,6 +165,15 @@ impl PaintFEApp {
             settings.birefnet_model_path.clone(),
         );
 
+        #[cfg(target_arch = "wasm32")]
+        let canvas = match cc.wgpu_render_state.as_ref() {
+            Some(rs) => Canvas::new_for_web(rs),
+            None => panic!(
+                "PaintFE web requires the eframe wgpu renderer (WebGPU/WebGL); \
+                 no wgpu_render_state was available from eframe"
+            ),
+        };
+        #[cfg(not(target_arch = "wasm32"))]
         let canvas = Canvas::new(&settings.preferred_gpu);
         let create_canvas_on_startup = settings.create_canvas_on_startup;
 
@@ -146,6 +191,8 @@ impl PaintFEApp {
             new_file_dialog: NewFileDialog::default(),
             save_file_dialog: SaveFileDialog::default(),
             settings_window: SettingsWindow::default(),
+            #[cfg(target_arch = "wasm32")]
+            show_welcome_popup: !crate::web_storage::has_seen_welcome(),
             assets,
             settings,
             theme,
@@ -205,7 +252,7 @@ impl PaintFEApp {
             force_exit: false,
             exit_save_queue: Vec::new(),
             exit_save_active: false,
-            last_autosave: std::time::Instant::now(),
+            last_autosave: crate::time_compat::Instant::now(),
             first_frame: true,
             ipc_receiver,
             close_initial_blank: !startup_files.is_empty() && create_canvas_on_startup,

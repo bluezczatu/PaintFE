@@ -525,7 +525,17 @@ impl ToolsPanel {
                                     anchor_lx * cos_r - anchor_ly * sin_r + pcx,
                                     anchor_lx * sin_r + anchor_ly * cos_r + pcy,
                                 ];
-                            } else {
+                            } else if pos_f.0 >= 0.0
+                                && pos_f.1 >= 0.0
+                                && pos_f.0 <= canvas_state.width as f32
+                                && pos_f.1 <= canvas_state.height as f32
+                            {
+                                // Only commit-on-press-elsewhere when the press
+                                // actually landed on the image — otherwise a
+                                // context-bar click (which `is_pointer_over_egui`
+                                // doesn't reliably detect for in-flow panel
+                                // content) reads as "clicked elsewhere" and
+                                // silently commits the shape being edited.
                                 should_commit = true;
                             }
                         }
@@ -857,11 +867,25 @@ impl ToolsPanel {
                         grabbed_handle = Some(1);
                     }
 
+                    // A press that hits neither handle only starts a fresh
+                    // gradient when it's actually on the image. Without this,
+                    // a press anywhere `allow_input` lets through but that
+                    // isn't a handle grab — e.g. a context-bar button click,
+                    // since `is_pointer_over_egui()` only recognizes floating
+                    // windows and doesn't see in-flow panel content like the
+                    // options bar as "over UI" — would be read as "clicked
+                    // elsewhere to start over" and silently commit whatever
+                    // gradient was still being adjusted.
+                    let click_on_image = click_pos.x >= 0.0
+                        && click_pos.y >= 0.0
+                        && click_pos.x <= canvas_state.width as f32
+                        && click_pos.y <= canvas_state.height as f32;
+
                     if let Some(handle_idx) = grabbed_handle {
                         // Grab existing handle for repositioning
                         self.gradient_state.dragging = true;
                         self.gradient_state.dragging_handle = Some(handle_idx);
-                    } else {
+                    } else if click_on_image {
                         // No handle hit - commit previous and start new gradient.
                         // Immediate commit here (no defer) because the new
                         // gradient's drag_start is set on the same frame and

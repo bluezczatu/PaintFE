@@ -47,6 +47,7 @@ impl PaintFEApp {
             return;
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         if self.process_paintdotnet_plugin_dialog(ctx, &mut dialog) {
             return;
         }
@@ -65,4 +66,5 @@ include!("dialogs/stylize.rs");
 include!("dialogs/render.rs");
 include!("dialogs/glitch_and_artistic.rs");
 include!("dialogs/ai_and_color_selection.rs");
+#[cfg(not(target_arch = "wasm32"))]
 include!("dialogs/paintdotnet_plugin.rs");

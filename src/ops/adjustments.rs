@@ -9,7 +9,7 @@
 
 use crate::canvas::{CanvasState, TiledImage};
 use image::RgbaImage;
-use rayon::prelude::*;
+use crate::par_compat::*;
 
 // ============================================================================
 // HELPER: selection-aware per-pixel transform
@@ -1049,7 +1049,23 @@ pub fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
 // GPU-ACCELERATED VARIANTS
 // ============================================================================
 
-/// GPU-accelerated brightness/contrast.  Falls back to CPU if selection exists.
+/// GPU-accelerated brightness/contrast. Falls back to CPU if selection exists
+/// (native), or always on web — see `invert_colors_gpu` for why the GPU
+/// readback path can't be used on wasm32 (blocks on `device.poll(Wait)`,
+/// which never resolves in the browser and hangs the tab). This one matters
+/// more than most: it's called on every slider drag in the live dialog.
+#[cfg(target_arch = "wasm32")]
+pub fn brightness_contrast_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    brightness: f32,
+    contrast: f32,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    brightness_contrast(state, layer_idx, brightness, contrast);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn brightness_contrast_gpu(
     state: &mut CanvasState,
     layer_idx: usize,
@@ -1075,6 +1091,19 @@ pub fn brightness_contrast_gpu(
     state.mark_dirty(None);
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn brightness_contrast_from_flat_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    brightness: f32,
+    contrast: f32,
+    original_flat: &RgbaImage,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    brightness_contrast_from_flat(state, layer_idx, brightness, contrast, original_flat);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn brightness_contrast_from_flat_gpu(
     state: &mut CanvasState,
     layer_idx: usize,
@@ -1099,7 +1128,21 @@ pub fn brightness_contrast_from_flat_gpu(
     state.mark_dirty(None);
 }
 
-/// GPU-accelerated hue/saturation/lightness.
+/// GPU-accelerated hue/saturation/lightness. See `brightness_contrast_gpu`
+/// for why web always takes the CPU path.
+#[cfg(target_arch = "wasm32")]
+pub fn hue_saturation_lightness_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    hue_shift: f32,
+    saturation: f32,
+    lightness: f32,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    hue_saturation_lightness(state, layer_idx, hue_shift, saturation, lightness);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn hue_saturation_lightness_gpu(
     state: &mut CanvasState,
     layer_idx: usize,
@@ -1125,6 +1168,27 @@ pub fn hue_saturation_lightness_gpu(
     state.mark_dirty(None);
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn hue_saturation_lightness_from_flat_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    hue_shift: f32,
+    saturation: f32,
+    lightness: f32,
+    original_flat: &RgbaImage,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    hue_saturation_lightness_from_flat(
+        state,
+        layer_idx,
+        hue_shift,
+        saturation,
+        lightness,
+        original_flat,
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn hue_saturation_lightness_from_flat_gpu(
     state: &mut CanvasState,
     layer_idx: usize,
@@ -1164,6 +1228,25 @@ pub fn hue_saturation_lightness_from_flat_gpu(
 }
 
 /// GPU-accelerated color inversion.
+/// On web this always takes the CPU path: the GPU route reads back the
+/// result with a blocking `device.poll(Wait)`, which can't complete
+/// synchronously in the browser (no real thread parking — the map_async
+/// callback fires on a later microtask a blocking wait can never reach) and
+/// hangs the tab. Inverting is cheap enough per-pixel that the CPU fallback
+/// (already used here for the selection-mask case) is not a real regression.
+#[cfg(target_arch = "wasm32")]
+pub fn invert_colors_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    if layer_idx >= state.layers.len() {
+        return;
+    }
+    invert_colors(state, layer_idx);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn invert_colors_gpu(state: &mut CanvasState, layer_idx: usize, gpu: &crate::gpu::GpuRenderer) {
     if layer_idx >= state.layers.len() {
         return;

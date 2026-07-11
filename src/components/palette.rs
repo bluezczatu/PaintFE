@@ -177,14 +177,6 @@ impl PalettePanel {
     }
 
     fn save_palette_to_file(&self) {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Palette", &["pfepalette"])
-            .set_file_name("paintfe.pfepalette")
-            .save_file()
-        else {
-            return;
-        };
-
         let mut out = String::new();
         for c in &self.palette {
             out.push_str(&format!(
@@ -195,9 +187,29 @@ impl PalettePanel {
                 c.a()
             ));
         }
-        let _ = std::fs::write(path, out);
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::web_fs::trigger_download("paintfe.pfepalette", out.as_bytes());
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let Some(path) = rfd::FileDialog::new()
+                .add_filter("Palette", &["pfepalette"])
+                .set_file_name("paintfe.pfepalette")
+                .save_file()
+            else {
+                return;
+            };
+            let _ = std::fs::write(path, out);
+        }
     }
 
+    /// Not available on web — no native file picker for palette files.
+    #[cfg(target_arch = "wasm32")]
+    fn load_palette_from_file(&mut self) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn load_palette_from_file(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Palette", &["pfepalette"])

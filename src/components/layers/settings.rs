@@ -856,6 +856,18 @@ impl LayersPanel {
                 }
                 self.settings_state.texture_load_rx = None;
             }
+            // Poll for async texture load from the browser file picker.
+            #[cfg(target_arch = "wasm32")]
+            if let Some((_name, data)) =
+                crate::web_bridge::drain_pending("texture_fill").into_iter().next()
+                && let Ok(img) = image::load_from_memory(&data)
+                && let Some(ref mut tex) = self.settings_state.text_effects.texture_fill
+            {
+                tex.texture_data = data;
+                tex.texture_width = img.width();
+                tex.texture_height = img.height();
+                changed = true;
+            }
 
             let mut remove_texture = false;
             let mut spawn_texture_dialog = false;
@@ -917,6 +929,10 @@ impl LayersPanel {
             if remove_texture {
                 self.settings_state.text_effects.texture_fill = None;
             }
+            // Texture-fill file picker runs on a background thread and uses a
+            // native dialog on desktop; on web it opens the browser's
+            // `<input type=file>` picker instead (see web_bridge).
+            #[cfg(not(target_arch = "wasm32"))]
             if spawn_texture_dialog {
                 let (tx, rx) = std::sync::mpsc::channel();
                 self.settings_state.texture_load_rx = Some(rx);
@@ -929,6 +945,10 @@ impl LayersPanel {
                         let _ = tx.send(data);
                     }
                 });
+            }
+            #[cfg(target_arch = "wasm32")]
+            if spawn_texture_dialog {
+                crate::web_bridge::open_picker("texture_fill", "image/*", false);
             }
         }
 

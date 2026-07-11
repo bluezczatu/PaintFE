@@ -5,8 +5,12 @@ use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
 use image::codecs::tga::TgaEncoder;
 use image::{DynamicImage, ImageError, Rgba, RgbaImage};
+#[cfg(not(target_arch = "wasm32"))]
 use rfd::FileDialog;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+#[cfg(target_arch = "wasm32")]
+use crate::web_fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
@@ -35,6 +39,9 @@ pub fn is_raw_extension(ext: &str) -> bool {
 
 /// Decode a RAW camera file to an sRGB RgbaImage.
 /// Uses rawloader for decoding and imagepipe for demosaicing + colour processing.
+/// Not available on web — imagepipe/rawloader are native-only (require a C
+/// toolchain and are not wasm-portable).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn decode_raw_image(path: &Path) -> Result<RgbaImage, String> {
     // Use imagepipe to handle the full decode + demosaicing + color pipeline
     let mut pipeline =
@@ -67,6 +74,11 @@ pub fn decode_raw_image(path: &Path) -> Result<RgbaImage, String> {
 
     RgbaImage::from_raw(width as u32, height as u32, rgba)
         .ok_or_else(|| "Failed to create image from RAW data".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn decode_raw_image(_path: &Path) -> Result<RgbaImage, String> {
+    Err("RAW camera file decoding is not available in the web version".to_string())
 }
 
 // ============================================================================
@@ -455,8 +467,14 @@ pub fn write_pfe_v3(project: &ProjectFileV3, path: &Path) -> Result<(), PfeError
 
 /// Load a .pfe project file (supports both v0 flat and v1 tiled formats)
 pub fn load_pfe(path: &Path) -> Result<CanvasState, PfeError> {
-    // Peek at the first 4 bytes to determine version
     let raw = std::fs::read(path)?;
+    load_pfe_from_bytes(&raw)
+}
+
+/// Load a .pfe project directly from bytes — used on web, where opened files
+/// only ever come with in-memory bytes (via the browser file picker or drag
+/// & drop), never a real filesystem path.
+pub fn load_pfe_from_bytes(raw: &[u8]) -> Result<CanvasState, PfeError> {
     if raw.len() < 12 {
         return Err(PfeError::InvalidFormat("File too small".into()));
     }
@@ -466,10 +484,10 @@ pub fn load_pfe(path: &Path) -> Result<CanvasState, PfeError> {
     let magic = std::str::from_utf8(&raw[8..12]).unwrap_or("");
 
     match magic {
-        PFE_MAGIC_V3 => load_pfe_v3(&raw),
-        PFE_MAGIC_V2 => load_pfe_v2(&raw),
-        PFE_MAGIC_V1 => load_pfe_v1(&raw),
-        PFE_MAGIC_V0 => load_pfe_v0(&raw),
+        PFE_MAGIC_V3 => load_pfe_v3(raw),
+        PFE_MAGIC_V2 => load_pfe_v2(raw),
+        PFE_MAGIC_V1 => load_pfe_v1(raw),
+        PFE_MAGIC_V0 => load_pfe_v0(raw),
         _ => Err(PfeError::InvalidFormat(format!(
             "Unknown magic '{}'",
             magic
@@ -684,7 +702,10 @@ pub fn load_image_sync(path: &Path) -> Result<CanvasState, String> {
         return load_pfe(path).map_err(|e| format!("{:?}", e));
     }
     if ext == "pdn" {
+        #[cfg(not(target_arch = "wasm32"))]
         return crate::pdn::load_pdn(path);
+        #[cfg(target_arch = "wasm32")]
+        return Err("Paint.NET project import is unavailable in the browser".to_string());
     }
 
     // Decode to display RGBA while preserving high-depth payload when available.
@@ -1809,6 +1830,7 @@ pub fn encode_and_write(
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn encode_static_webp<W: Write>(
     image: &RgbaImage,
     writer: &mut W,
@@ -1823,6 +1845,25 @@ fn encode_static_webp<W: Write>(
     };
     writer.write_all(&bytes)?;
     Ok(())
+}
+
+/// Web fallback: the `webp` crate wraps native libwebp (needs a C toolchain,
+/// unavailable in the browser sandbox). Use the pure-Rust `image` crate's
+/// WebP encoder instead — lossless only, so `quality`/`lossless` are ignored.
+#[cfg(target_arch = "wasm32")]
+fn encode_static_webp<W: Write>(
+    image: &RgbaImage,
+    writer: &mut W,
+    _quality: u8,
+    _lossless: bool,
+) -> Result<(), ImageError> {
+    let encoder = image::codecs::webp::WebPEncoder::new_lossless(writer);
+    encoder.write_image(
+        image.as_raw(),
+        image.width(),
+        image.height(),
+        image::ExtendedColorType::Rgba8,
+    )
 }
 
 // ============================================================================
@@ -1879,6 +1920,13 @@ impl FileHandler {
     /// Show native file dialog to pick one or more file paths (without loading them).
     /// Returns a Vec of selected paths — empty if the dialog was cancelled.
     /// Supports multi-select so Linux/Wayland users can open multiple files without drag-and-drop.
+    /// Not available on web — use drag & drop to import images instead.
+    #[cfg(target_arch = "wasm32")]
+    pub fn pick_file_paths(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn pick_file_paths(&self) -> Vec<PathBuf> {
         FileDialog::new()
             .add_filter(
@@ -1913,6 +1961,13 @@ impl FileHandler {
 
     /// Open an image file using native file dialog
     /// Returns the loaded image and its path on success
+    /// Not available on web — use drag & drop to import images instead.
+    #[cfg(target_arch = "wasm32")]
+    pub fn open_image(&mut self) -> Option<(RgbaImage, PathBuf)> {
+        None
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn open_image(&mut self) -> Option<(RgbaImage, PathBuf)> {
         let path = FileDialog::new()
             .add_filter(
@@ -2359,6 +2414,13 @@ pub fn decode_apng_frames(path: &Path) -> Result<Vec<(RgbaImage, u16)>, String> 
 }
 
 /// Decode all frames from an animated WebP file.
+/// Not available on web — the `webp` crate wraps native libwebp.
+#[cfg(target_arch = "wasm32")]
+pub fn decode_webp_frames(_path: &Path) -> Result<Vec<(RgbaImage, u16)>, String> {
+    Err("Animated WebP is not supported in the web version".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn decode_webp_frames(path: &Path) -> Result<Vec<(RgbaImage, u16)>, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("Failed to read WebP: {}", e))?;
     let mut anim = webp::AnimDecoder::new(&bytes)
@@ -2513,6 +2575,16 @@ pub fn detect_animation(path: &Path) -> AnimationInfo {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn detect_webp_animation(_path: &Path) -> AnimationInfo {
+    AnimationInfo {
+        is_animated: false,
+        frame_count: 1,
+        avg_delay_ms: 100,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn detect_webp_animation(path: &Path) -> AnimationInfo {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
@@ -2787,6 +2859,19 @@ pub fn encode_animated_png(frames: &[RgbaImage], fps: f32, path: &Path) -> Resul
 }
 
 /// Encode multiple frames as animated WebP.
+/// Not available on web — the `webp` crate wraps native libwebp.
+#[cfg(target_arch = "wasm32")]
+pub fn encode_animated_webp(
+    _frames: &[RgbaImage],
+    _frame_modes: &[WebpFrameCompression],
+    _fps: f32,
+    _quality: u8,
+    _path: &Path,
+) -> Result<(), String> {
+    Err("Animated WebP export is not supported in the web version".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn encode_animated_webp(
     frames: &[RgbaImage],
     frame_modes: &[WebpFrameCompression],
@@ -2844,6 +2929,7 @@ pub fn encode_animated_webp(
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn webp_frame_config(mode: WebpFrameCompression, quality: u8) -> Result<webp::WebPConfig, String> {
     let mut config = webp::WebPConfig::new().map_err(|_| "WebP config init failed".to_string())?;
     config.lossless = if mode == WebpFrameCompression::Lossless {

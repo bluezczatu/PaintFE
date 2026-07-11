@@ -1,5 +1,7 @@
 # Rust build output
 /target
+/web/target
+/web/dist
 
 # Local website files
 _WEBSITE/

@@ -1,11 +1,24 @@
 impl ToolsPanel {
     fn show_text_options(&mut self, ui: &mut egui::Ui, assets: &Assets) {
+        // Web only: user-uploaded/Google Fonts can be added at any time from
+        // Settings. Detect that via a generation counter and force the
+        // font-list + preview caches below to recompute.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let font_gen = crate::ops::text::custom_fonts::generation();
+            if font_gen != self.text_state.custom_fonts_seen_gen {
+                self.text_state.custom_fonts_seen_gen = font_gen;
+                self.text_state.available_fonts.clear();
+                self.text_state.font_preview_cache.clear();
+            }
+        }
+
         // Async font loading: kick off background thread on first access
         if self.text_state.available_fonts.is_empty() && self.text_state.fonts_loading_rx.is_none()
         {
             let (tx, rx) = std::sync::mpsc::channel();
             self.text_state.fonts_loading_rx = Some(rx);
-            std::thread::spawn(move || {
+            crate::par_compat::spawn(move || {
                 let fonts = crate::ops::text::enumerate_system_fonts();
                 let _ = tx.send(fonts);
             });
@@ -71,7 +84,7 @@ impl ToolsPanel {
                 }
                 let (tx, rx) = std::sync::mpsc::channel();
                 self.text_state.font_preview_rx = Some(rx);
-                std::thread::spawn(move || {
+                crate::par_compat::spawn(move || {
                     const BATCH: usize = 24;
                     let mut out: Vec<(String, Option<ab_glyph::FontArc>)> =
                         Vec::with_capacity(BATCH);

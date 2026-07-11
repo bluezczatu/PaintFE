@@ -19,7 +19,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::time_compat::{SystemTime, UNIX_EPOCH};
 
 static LOG_FILE: OnceLock<Mutex<File>> = OnceLock::new();
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();

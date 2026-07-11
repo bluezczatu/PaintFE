@@ -1,6 +1,6 @@
 use ab_glyph::{Font, FontArc, ScaleFont};
 use image::{Rgba, RgbaImage};
-use rayon::prelude::*;
+use crate::par_compat::*;
 use serde::{Deserialize, Serialize};
 
 use crate::canvas::TiledImage;

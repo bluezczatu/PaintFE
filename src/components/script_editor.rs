@@ -733,6 +733,12 @@ impl ScriptEditorPanel {
         self.selected_script_idx = Some(self.saved_scripts.len() - 1);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn load_script_dialog(&mut self) {
+        // Not available on web — no native file picker for .rhai scripts.
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn load_script_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Rhai Script", &["rhai"])

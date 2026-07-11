@@ -1,5 +1,5 @@
 use image::{GrayImage, Rgba, RgbaImage};
-use rayon::prelude::*;
+use crate::par_compat::*;
 use std::collections::VecDeque;
 
 #[derive(Clone, Copy, Debug)]

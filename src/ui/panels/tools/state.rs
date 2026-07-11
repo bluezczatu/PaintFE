@@ -6,10 +6,10 @@ use crate::components::history::{PixelPatch, SelectionCommand};
 use eframe::egui;
 use egui::{Color32, Pos2, Rect, Vec2};
 use image::{GrayImage, Rgba};
-use rayon::prelude::*;
+use crate::par_compat::*;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Instant;
+use crate::time_compat::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Tool {
@@ -1399,6 +1399,10 @@ pub struct TextToolState {
     pub available_weights: Vec<(String, u16)>,
     /// Async font list: receiver from background thread
     pub fonts_loading_rx: Option<std::sync::mpsc::Receiver<Vec<String>>>,
+    /// Web only: last-seen `custom_fonts::generation()` value, used to detect
+    /// when a font was uploaded/fetched from Settings so the dropdown can
+    /// refresh without a restart.
+    pub custom_fonts_seen_gen: u64,
     /// Cached rasterized text buffer for fast move (avoid re-rasterization during drag)
     pub cached_raster_buf: Vec<u8>,
     pub cached_raster_w: u32,
@@ -1536,6 +1540,7 @@ impl Default for TextToolState {
             cached_line_height: 0.0,
             available_weights: vec![("Regular".to_string(), 400)],
             fonts_loading_rx: None,
+            custom_fonts_seen_gen: 0,
             cached_raster_buf: Vec::new(),
             cached_raster_w: 0,
             cached_raster_h: 0,

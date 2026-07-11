@@ -58,7 +58,7 @@ macro_rules! effect_dialog_base {
                         std::sync::Arc::new(std::sync::Mutex::new(None));
                     let arc_clone = arc.clone();
                     let tiled = original_pixels.clone().unwrap();
-                    rayon::spawn(move || {
+                    crate::par_compat::spawn(move || {
                         let flat = tiled.to_rgba_image();
                         if let Ok(mut guard) = arc_clone.lock() {
                             *guard = Some(flat);

@@ -1386,6 +1386,7 @@ impl PaintFEApp {
                                 }
                                 ui.close();
                             }
+                            #[cfg(not(target_arch = "wasm32"))]
                             if self.settings.paintdotnet_plugins_enabled {
                                 let plugins: Vec<_> = crate::paintdotnet_plugins::PluginManager::load()
                                     .enabled_plugins()
@@ -1415,6 +1416,7 @@ impl PaintFEApp {
                             }
                         });
 
+                        #[cfg(not(target_arch = "wasm32"))]
                         if self.settings.paintdotnet_plugins_enabled {
                             let plugins: Vec<_> = crate::paintdotnet_plugins::PluginManager::load()
                                 .enabled_plugins()
@@ -1681,6 +1683,10 @@ impl PaintFEApp {
                             t!("menu.view.colors_panel"),
                         );
                         ui.checkbox(&mut self.window_visibility.palette, "Palette Panel");
+                        // Script Editor needs a native file picker to load .rhai
+                        // scripts from disk — not available on web, so don't
+                        // offer the menu entry at all there.
+                        #[cfg(not(target_arch = "wasm32"))]
                         ui.checkbox(
                             &mut self.window_visibility.script_editor,
                             t!("menu.view.script_editor"),

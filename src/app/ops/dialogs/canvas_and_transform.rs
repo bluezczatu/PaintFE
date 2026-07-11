@@ -36,7 +36,7 @@ impl PaintFEApp {
                         }
                         self.filter_status_description = "Resize Image".to_string();
                         self.pending_filter_jobs += 1;
-                        rayon::spawn(move || {
+                        crate::par_compat::spawn(move || {
                             let result_layers =
                                 crate::ops::transform::resize_layers(flat_layers, w, h, interp);
                             let _ = sender.send(CanvasOpResult {
@@ -95,7 +95,7 @@ impl PaintFEApp {
                             }
                             self.filter_status_description = "Resize Canvas".to_string();
                             self.pending_filter_jobs += 1;
-                            rayon::spawn(move || {
+                            crate::par_compat::spawn(move || {
                                 let result_layers = crate::ops::transform::resize_canvas_layers(
                                     flat_layers,
                                     old_w,

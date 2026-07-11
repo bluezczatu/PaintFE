@@ -281,8 +281,24 @@ pub fn median_filter_from_flat(
     commit_to_layer(state, layer_idx, &result);
 }
 
-/// GPU-accelerated median filter.  Falls back to CPU for radius > 7 or when
-/// a selection mask is present.
+/// GPU-accelerated median filter. Falls back to CPU for radius > 7 or when a
+/// selection mask is present (native), or always on web — the GPU route
+/// reads back its result with a blocking `device.poll(Wait)`, which can't
+/// complete synchronously in the browser (no real thread parking — the
+/// map_async callback fires on a later microtask a blocking wait can never
+/// reach) and hangs the tab. See `invert_colors_gpu` in ops/adjustments.rs
+/// for the same pattern.
+#[cfg(target_arch = "wasm32")]
+pub fn median_filter_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    radius: u32,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    median_filter(state, layer_idx, radius);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn median_filter_gpu(
     state: &mut CanvasState,
     layer_idx: usize,
@@ -306,6 +322,18 @@ pub fn median_filter_gpu(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn median_filter_from_flat_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    radius: u32,
+    original_flat: &RgbaImage,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    median_filter_from_flat(state, layer_idx, radius, original_flat);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn median_filter_from_flat_gpu(
     state: &mut CanvasState,
     layer_idx: usize,

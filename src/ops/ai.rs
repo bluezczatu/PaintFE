@@ -545,6 +545,13 @@ fn parse_ort_version(version: &str) -> Option<(u32, u32)> {
 }
 
 /// Probe the ONNX Runtime DLL. Returns the version string on success; rejects unsafe paths and enforces >= 1.16.
+/// Always unavailable on web — see `remove_background` above.
+#[cfg(target_arch = "wasm32")]
+pub fn probe_onnx_runtime(dll_path: &str) -> Result<String, OnnxError> {
+    Err(OnnxError::DllNotFound(dll_path.to_string()))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn probe_onnx_runtime(dll_path: &str) -> Result<String, OnnxError> {
     // Security: validate path before loading
     validate_onnx_path(dll_path, true)?;
@@ -955,6 +962,22 @@ fn blur_grayscale(img: &image::GrayImage, radius: f32) -> image::GrayImage {
 /// 6. Applies the mask as alpha to the original image (with settings)
 ///
 /// Returns the image with background made transparent.
+/// AI background removal is not available on web — it depends on dynamically
+/// loading a native ONNX Runtime library via `libloading`, which has no wasm32
+/// equivalent (no dynamic library loading in the browser sandbox).
+#[cfg(target_arch = "wasm32")]
+pub fn remove_background(
+    _dll_path: &str,
+    _model_path: &str,
+    _input: &RgbaImage,
+    _settings: &RemoveBgSettings,
+) -> Result<RgbaImage, OnnxError> {
+    Err(OnnxError::DllNotFound(
+        "AI background removal is not available in the web version".to_string(),
+    ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn remove_background(
     dll_path: &str,
     model_path: &str,

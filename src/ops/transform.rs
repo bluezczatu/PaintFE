@@ -4,7 +4,7 @@
 
 use crate::canvas::{CanvasState, Layer, TiledImage};
 use image::{GrayImage, Luma, Rgba, RgbaImage, imageops};
-use rayon::prelude::*;
+use crate::par_compat::*;
 
 #[derive(Clone, Copy)]
 enum SelectionCanvasTransform {

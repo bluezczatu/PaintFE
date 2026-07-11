@@ -399,7 +399,7 @@ impl ToolsPanel {
         self.active_layer_rgba_prewarm_rx = Some(rx);
         self.active_layer_rgba_prewarm_key = Some(key);
 
-        rayon::spawn(move || {
+        crate::par_compat::spawn(move || {
             let data: Arc<[u8]> = Arc::from(pixels.to_rgba_image().into_raw().into_boxed_slice());
             let _ = tx.send(FlatLayerCache {
                 layer_index: key.0,
@@ -744,7 +744,7 @@ impl ToolsPanel {
 
         let (tx, rx) = std::sync::mpsc::channel();
         self.fill_state.async_rx = Some(rx);
-        rayon::spawn(move || {
+        crate::par_compat::spawn(move || {
             let (region_index, fill_mask, fill_bbox) =
                 if let Some(region_index) = active_fill.region_index.clone() {
                     (
@@ -921,7 +921,7 @@ impl ToolsPanel {
         self.magic_wand_state.async_rx = Some(rx);
         self.magic_wand_state.computing = true;
 
-        rayon::spawn(move || {
+        crate::par_compat::spawn(move || {
             let index = if scope == MagicWandScope::Global {
                 Self::compute_global_distance_map(&flat_rgba, &target_color, w, h, distance_mode)
             } else {
@@ -1471,7 +1471,7 @@ impl ToolsPanel {
         // Mark dirty and clear preview (optional for reseed click path)
         if clear_preview_overlay {
             self.fill_state.preview_clear_at = Some(
-                std::time::Instant::now() + std::time::Duration::from_millis(200),
+                crate::time_compat::Instant::now() + std::time::Duration::from_millis(200),
             );
         }
         canvas_state.mark_dirty(dirty_rect);

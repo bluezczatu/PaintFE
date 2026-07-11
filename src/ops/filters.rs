@@ -4,7 +4,7 @@
 
 use crate::canvas::{CanvasState, TiledImage};
 use image::{RgbaImage, imageops};
-use rayon::prelude::*;
+use crate::par_compat::*;
 
 /// Apply a Gaussian blur to the active layer.
 /// `sigma` controls the blur radius / strength.
@@ -24,7 +24,23 @@ pub fn gaussian_blur_layer(state: &mut CanvasState, layer_idx: usize, sigma: f32
     state.mark_dirty(None);
 }
 
-/// GPU-accelerated Gaussian blur.  Falls through to CPU if GPU is unavailable.
+/// GPU-accelerated Gaussian blur. Falls through to CPU if GPU is unavailable
+/// (native), or always on web — the GPU route reads back its result with a
+/// blocking `device.poll(Wait)`, which can't complete synchronously in the
+/// browser (no real thread parking — the map_async callback fires on a
+/// later microtask a blocking wait can never reach) and hangs the tab. See
+/// `invert_colors_gpu` in ops/adjustments.rs for the same pattern.
+#[cfg(target_arch = "wasm32")]
+pub fn gaussian_blur_layer_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    sigma: f32,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    gaussian_blur_layer(state, layer_idx, sigma);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn gaussian_blur_layer_gpu(
     state: &mut CanvasState,
     layer_idx: usize,
@@ -70,7 +86,20 @@ pub fn gaussian_blur_layer_from_flat(
     state.mark_dirty(None);
 }
 
-/// GPU-accelerated live preview blur.
+/// GPU-accelerated live preview blur. See `gaussian_blur_layer_gpu` for why
+/// web always takes the CPU path.
+#[cfg(target_arch = "wasm32")]
+pub fn gaussian_blur_layer_from_flat_gpu(
+    state: &mut CanvasState,
+    layer_idx: usize,
+    sigma: f32,
+    original_flat: &RgbaImage,
+    _gpu: &crate::gpu::GpuRenderer,
+) {
+    gaussian_blur_layer_from_flat(state, layer_idx, sigma, original_flat);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn gaussian_blur_layer_from_flat_gpu(
     state: &mut CanvasState,
     layer_idx: usize,

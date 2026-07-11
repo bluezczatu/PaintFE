@@ -312,6 +312,10 @@ impl ToolsPanel {
         // ------------------------------------------------------------------
         // GPU PATH
         // ------------------------------------------------------------------
+        // (On web, `gpu_renderer` is already `None` here — see
+        // `Canvas::gpu_renderer_for_sync_readback` — because `generate_into`
+        // blocks on a GPU readback that can't complete synchronously in the
+        // browser. This just takes the existing CPU fallback below.)
         let mut full_buf = if let Some(gpu) = gpu_renderer {
             let shape_u32 = match shape {
                 GradientShape::Linear => 0u32,

@@ -354,6 +354,17 @@ impl GpuFloodFillPipeline {
         connectivity: FloodConnectivity,
         out: &mut Vec<u8>,
     ) -> bool {
+        // The readback below blocks on `device.poll(Wait)`, which cannot
+        // synchronously complete in the browser (no real thread parking).
+        // Report "unavailable" so the caller takes its existing CPU fallback
+        // path instead of hanging.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (ctx, flat_rgba, input_key, target_color, seed_x, seed_y, w, h, distance_mode, connectivity, out);
+            return false;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
         let device = &ctx.device;
         let queue = &ctx.queue;
 
@@ -712,6 +723,7 @@ impl GpuFloodFillPipeline {
         drop(mapped);
         staging.unmap();
         true
+        }
     }
 
     /// Compute per-pixel global distance map on GPU (no connectivity, no flood).
@@ -727,6 +739,14 @@ impl GpuFloodFillPipeline {
         distance_mode: WandDistanceMode,
         out: &mut Vec<u8>,
     ) -> bool {
+        // See compute_flood_distances above: blocking readback can't work on web.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (ctx, flat_rgba, input_key, target_color, w, h, distance_mode, out);
+            return false;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
         let device = &ctx.device;
         let queue = &ctx.queue;
 
@@ -855,6 +875,7 @@ impl GpuFloodFillPipeline {
         drop(mapped);
         staging.unmap();
         true
+        }
     }
 }
 

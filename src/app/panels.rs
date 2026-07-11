@@ -276,7 +276,10 @@ impl PaintFEApp {
             // Handle pending app-level actions from layers context menu
             if let Some(action) = self.layers_panel.pending_app_action.take() {
                 match action {
+                    // Not available on web — drag & drop an image onto the
+                    // canvas to import it as a new layer instead.
                     crate::components::layers::LayerAppAction::ImportFromFile => {
+                        #[cfg(not(target_arch = "wasm32"))]
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter(
                                 "Image",

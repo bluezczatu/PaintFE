@@ -435,7 +435,7 @@ pub fn rasterize_text(
     color: [u8; 4],
     anti_alias: bool,
     bold: bool,
-    _italic: bool,
+    italic: bool,
     underline: bool,
     strikethrough: bool,
     _canvas_w: u32,
@@ -679,10 +679,24 @@ pub fn rasterize_text(
             // key is (GlyphId, font_size, width_scale, height_scale) bits
             let actual_bx = *base_bx + draw_x;
             let actual_by = *base_by + draw_y;
+            // Synthetic italic: shear pixels horizontally relative to this
+            // glyph's baseline. There's no real italic font file to fall
+            // back to on web (no OS font store to search for a slanted
+            // variant), so this is the only way italic ever looks different
+            // there — matched here rather than only gating it to wasm32
+            // since it's a reasonable fallback everywhere a family has no
+            // true italic face.
+            const ITALIC_SHEAR: f32 = 0.2;
+            let baseline_y = origin_y + draw_y;
 
             for &(px, py, cov) in pixels.iter() {
                 let cx = px as f32 + origin_x + actual_bx;
                 let cy = py as f32 + origin_y + actual_by;
+                let cx = if italic {
+                    cx + (baseline_y - cy) * ITALIC_SHEAR
+                } else {
+                    cx
+                };
 
                 let ix = cx.round() as i32 - x0;
                 let iy = cy.round() as i32 - y0;
@@ -807,6 +821,21 @@ fn draw_decoration_line(
 /// Enumerate system font families (family names only, no weight variants).
 /// Returns a sorted, deduplicated list of font family names.
 /// This is fast — just queries family names without loading any font data.
+/// On web there is no system font enumeration API available to wasm; only
+/// the fonts bundled with the app, plus any user-uploaded or Google Fonts
+/// the user has added this session, are offered.
+#[cfg(target_arch = "wasm32")]
+pub fn enumerate_system_fonts() -> Vec<String> {
+    let mut fonts = vec![
+        "DM Sans".to_string(),
+        "Noto Sans".to_string(),
+        "JetBrains Mono".to_string(),
+    ];
+    fonts.extend(custom_fonts::names());
+    fonts
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn enumerate_system_fonts() -> Vec<String> {
     match font_kit::source::SystemSource::new().all_families() {
         Ok(mut families) => {
@@ -837,6 +866,13 @@ pub fn enumerate_system_fonts() -> Vec<String> {
 
 /// Enumerate available weight variants for a specific font family.
 /// Returns list of (display_name, weight_value) pairs, e.g. [("Regular", 400), ("Light", 300), ("Bold", 700)].
+/// On web, the bundled fonts only ship a single Regular weight.
+#[cfg(target_arch = "wasm32")]
+pub fn enumerate_font_weights(_family: &str) -> Vec<(String, u16)> {
+    vec![("Regular".to_string(), 400)]
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn enumerate_font_weights(family: &str) -> Vec<(String, u16)> {
     use font_kit::source::SystemSource;
 
@@ -899,6 +935,94 @@ pub fn enumerate_font_weights(family: &str) -> Vec<(String, u16)> {
 /// Load a font by family name, weight, and style from the system.
 /// `weight` is a CSS-style weight value (100=Thin, 400=Regular, 700=Bold, etc.)
 /// Returns None if the font cannot be found.
+/// On web there is no system font store to query: this checks user-uploaded
+/// / Google Fonts first, then falls back to the same TTF bytes embedded for
+/// egui's own UI chrome (bootstrap.rs) re-parsed as an `ab_glyph::FontArc` for
+/// canvas rasterization. Weight/italic variants aren't available for any of
+/// these — every web font is a single Regular-weight file.
+#[cfg(target_arch = "wasm32")]
+pub fn load_system_font(family: &str, _weight: u16, _italic: bool) -> Option<FontArc> {
+    if let Some(f) = custom_fonts::get(family) {
+        return Some(f);
+    }
+    match family {
+        "DM Sans" => {
+            FontArc::try_from_slice(include_bytes!("../../assets/fonts/DMSans-Regular.ttf")).ok()
+        }
+        "Noto Sans" => {
+            FontArc::try_from_slice(include_bytes!("../../assets/fonts/NotoSans-Regular.ttf")).ok()
+        }
+        "JetBrains Mono" => FontArc::try_from_slice(include_bytes!(
+            "../../assets/fonts/JetBrainsMono-Regular.ttf"
+        ))
+        .ok(),
+        _ => None,
+    }
+}
+
+/// Custom fonts (web only) — user-uploaded font files and fetched Google
+/// Fonts, held in memory for the session. There's no OS font store to write
+/// them into, so they just live in a process-wide registry that
+/// `enumerate_system_fonts`/`load_system_font` also consult.
+#[cfg(target_arch = "wasm32")]
+pub mod custom_fonts {
+    use super::FontArc;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static CUSTOM_FONTS: Mutex<Vec<(String, FontArc)>> = Mutex::new(Vec::new());
+    static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+    /// Register (or replace) a custom font under `family`. Bumps the
+    /// generation counter so UI that caches the font list knows to refresh.
+    pub fn register(family: String, font: FontArc) {
+        let mut fonts = CUSTOM_FONTS.lock().unwrap_or_else(|e| e.into_inner());
+        fonts.retain(|(name, _)| name != &family);
+        fonts.push((family, font));
+        GENERATION.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Parse raw font file bytes (ttf/otf/woff) and register them under `family`.
+    pub fn register_from_bytes(family: String, bytes: Vec<u8>) -> Result<(), String> {
+        let font = FontArc::try_from_vec(bytes)
+            .map_err(|_| "Not a valid TTF/OTF font file".to_string())?;
+        register(family, font);
+        Ok(())
+    }
+
+    pub fn remove(family: &str) {
+        let mut fonts = CUSTOM_FONTS.lock().unwrap_or_else(|e| e.into_inner());
+        fonts.retain(|(name, _)| name != family);
+        GENERATION.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn names() -> Vec<String> {
+        CUSTOM_FONTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect()
+    }
+
+    pub fn get(family: &str) -> Option<FontArc> {
+        CUSTOM_FONTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|(n, _)| n == family)
+            .map(|(_, f)| f.clone())
+    }
+
+    /// Monotonically increasing counter bumped whenever the custom font list
+    /// changes, so polling code can cheaply detect "did anything change?"
+    /// without diffing the whole list every frame.
+    pub fn generation() -> u64 {
+        GENERATION.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_system_font(family: &str, weight: u16, italic: bool) -> Option<FontArc> {
     use font_kit::family_name::FamilyName;
     use font_kit::properties::{Properties, Style, Weight};

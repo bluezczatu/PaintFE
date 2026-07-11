@@ -8,9 +8,9 @@ use crate::ops::transform::Interpolation;
 use eframe::egui;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use image::{GrayImage, Luma, Rgba, RgbaImage, imageops};
-use rayon::prelude::*;
+use crate::par_compat::*;
 use std::sync::Mutex;
-use std::time::Instant;
+use crate::time_compat::Instant;
 
 #[cfg(target_os = "linux")]
 use image::ImageFormat;
@@ -189,7 +189,34 @@ pub fn get_internal_clipboard_image_dimensions() -> Option<(u32, u32)> {
 //  System clipboard helpers (OS-level copy/paste via arboard)
 // ---------------------------------------------------------------------------
 
-/// Write an RGBA image to the system clipboard.
+/// Write an RGBA image to the system clipboard via the browser's async
+/// Clipboard API. Fire-and-forget: the write happens in the background and
+/// failures are swallowed (e.g. unsupported browser, no permission, insecure
+/// context) — PaintFE's internal copy/paste still works within the app
+/// regardless.
+#[cfg(target_arch = "wasm32")]
+pub fn copy_to_system_clipboard(img: &RgbaImage) {
+    use image::ImageEncoder;
+
+    let mut png_bytes: Vec<u8> = Vec::new();
+    if image::codecs::png::PngEncoder::new(&mut png_bytes)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .is_err()
+    {
+        return;
+    }
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = web_clipboard::write_png_to_clipboard(png_bytes).await;
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn copy_to_system_clipboard(img: &RgbaImage) {
     // arboard wants ImageData { width, height, bytes: Cow<[u8]> } in RGBA order.
     #[cfg(target_os = "linux")]
@@ -229,6 +256,18 @@ pub fn copy_to_system_clipboard(img: &RgbaImage) {
 ///   1. Raw image data (e.g. Print Screen, copied from another image editor).
 ///   2. Text on clipboard that happens to be a valid image file path.
 ///   3. A file copied in Explorer (CF_HDROP file list) — Windows-specific.
+/// Returns the most recent image captured by the browser's native `paste`
+/// event (installed once at startup, see `web_clipboard::install_paste_listener`).
+/// Reading the OS clipboard directly (`navigator.clipboard.read()`) requires
+/// an async round-trip this function's synchronous signature can't express,
+/// so instead we listen for the real Ctrl+V / browser paste event and decode
+/// whatever image data it carries ahead of time.
+#[cfg(target_arch = "wasm32")]
+pub fn get_from_system_clipboard() -> Option<RgbaImage> {
+    web_clipboard::take_pasted_image()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_from_system_clipboard() -> Option<RgbaImage> {
     #[cfg(target_os = "linux")]
     {
@@ -2265,3 +2304,110 @@ fn alpha_blend(dst: Rgba<u8>, src: Rgba<u8>) -> Rgba<u8> {
         (out_a * 255.0).round().clamp(0.0, 255.0) as u8,
     ])
 }
+
+// ---------------------------------------------------------------------------
+//  Web system clipboard (browser Clipboard API / native `paste` event)
+// ---------------------------------------------------------------------------
+
+#[cfg(target_arch = "wasm32")]
+mod web_clipboard {
+    use super::RgbaImage;
+    use std::cell::RefCell;
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::prelude::*;
+
+    thread_local! {
+        static LAST_PASTED: RefCell<Option<RgbaImage>> = const { RefCell::new(None) };
+    }
+
+    /// Take whatever image the last browser `paste` event decoded, if any.
+    pub fn take_pasted_image() -> Option<RgbaImage> {
+        LAST_PASTED.with(|p| p.borrow_mut().clone())
+    }
+
+    /// Install a single global `paste` listener that decodes image data from
+    /// the OS clipboard (Ctrl+V / the browser's native paste event) into
+    /// `LAST_PASTED`, where `get_from_system_clipboard` picks it up. There is
+    /// no synchronous way to read `navigator.clipboard` on demand from egui's
+    /// input handling, so this listens for the real paste event instead —
+    /// call once at startup.
+    pub fn install_paste_listener(ctx: egui::Context) {
+        let result = (|| -> Result<(), JsValue> {
+            let window = web_sys::window().ok_or("no window")?;
+            let document = window.document().ok_or("no document")?;
+
+            let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::ClipboardEvent| {
+                let Some(data) = event.clipboard_data() else {
+                    return;
+                };
+                let items = data.items();
+                for i in 0..items.length() {
+                    let Some(item) = items.get(i) else { continue };
+                    if !item.type_().starts_with("image/") {
+                        continue;
+                    }
+                    let Some(file) = item.get_as_file().ok().flatten() else {
+                        continue;
+                    };
+                    let ctx = ctx.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(buf) =
+                            wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await
+                        {
+                            let array = js_sys::Uint8Array::new(&buf);
+                            let bytes = array.to_vec();
+                            if let Ok(img) = image::load_from_memory(&bytes) {
+                                LAST_PASTED.with(|p| *p.borrow_mut() = Some(img.to_rgba8()));
+                                ctx.request_repaint();
+                            }
+                        }
+                    });
+                    break;
+                }
+            });
+
+            document
+                .add_event_listener_with_callback("paste", closure.as_ref().unchecked_ref())?;
+            // Leak intentionally: one global listener for the app's lifetime.
+            closure.forget();
+            Ok(())
+        })();
+
+        if let Err(e) = result {
+            web_sys::console::error_2(
+                &"PaintFE: failed to install clipboard paste listener:".into(),
+                &e,
+            );
+        }
+    }
+
+    /// Write PNG bytes to the OS clipboard via the async Clipboard API.
+    /// Requires a secure context (https/localhost) and browser support
+    /// (Chromium, Safari; Firefox does not support image `ClipboardItem`s as
+    /// of writing) — returns `Err` on any failure so the caller can decide
+    /// whether to surface it, though callers currently treat this as
+    /// best-effort and ignore the result.
+    pub async fn write_png_to_clipboard(png_bytes: Vec<u8>) -> Result<(), JsValue> {
+        let window = web_sys::window().ok_or("no window")?;
+        let clipboard = window.navigator().clipboard();
+
+        let array = js_sys::Uint8Array::from(png_bytes.as_slice());
+        let parts = js_sys::Array::new();
+        parts.push(&array);
+        let blob_opts = web_sys::BlobPropertyBag::new();
+        blob_opts.set_type("image/png");
+        let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &blob_opts)?;
+
+        let record = js_sys::Object::new();
+        js_sys::Reflect::set(&record, &JsValue::from_str("image/png"), &blob)?;
+        let item = web_sys::ClipboardItem::new_with_record_from_str_to_blob_promise(&record)?;
+        let items = js_sys::Array::new();
+        items.push(&item);
+
+        wasm_bindgen_futures::JsFuture::from(clipboard.write(&items)).await?;
+        Ok(())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub use web_clipboard::install_paste_listener;

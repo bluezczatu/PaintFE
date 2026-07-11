@@ -22,6 +22,29 @@ impl GpuContext {
     /// We use `pollster::block_on` because eframe doesn't expose its wgpu
     /// device to application code and we need our own for compute + offscreen
     /// composition.
+    // On web, requesting a *second*, headless wgpu adapter/device from scratch
+    // doesn't work: `wgpu::Instance::request_adapter`/`request_device` are
+    // backed by real browser Promises that never resolve on the first poll
+    // (`pollster::block_on` can only complete a future that's Ready
+    // immediately — there's no real thread-parking in the wasm32 sandbox),
+    // and a headless (surfaceless) WebGL context can't be created without a
+    // real canvas either. Instead, reuse the device eframe already created
+    // for drawing the UI on this exact canvas (available via
+    // `CreationContext::wgpu_render_state`, threaded down through
+    // `Canvas::new`) — it's already proven to work, and initialization is
+    // fully synchronous from here since eframe did the async setup already.
+    #[cfg(target_arch = "wasm32")]
+    pub fn from_egui_render_state(rs: &eframe::egui_wgpu::RenderState) -> Self {
+        let limits = rs.adapter.limits();
+        Self {
+            device: Arc::new(rs.device.clone()),
+            queue: Arc::new(rs.queue.clone()),
+            adapter_name: rs.adapter.get_info().name.clone(),
+            max_texture_dim: limits.max_texture_dimension_2d,
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(preferred_gpu: &str) -> Option<Self> {
         // 1. Try hardware adapter.
         if let Some(ctx) = pollster::block_on(Self::new_async(preferred_gpu, false)) {
@@ -37,9 +60,11 @@ impl GpuContext {
         // panics (unwrap) on some X11 configurations (EGL_BAD_ACCESS).  Vulkan
         // plus Mesa's lavapipe software renderer covers all modern Linux systems.
         // On other platforms keep Backends::all() for maximum compatibility.
-        #[cfg(target_os = "linux")]
+        #[cfg(target_arch = "wasm32")]
+        let backends = wgpu::Backends::GL;
+        #[cfg(all(not(target_arch = "wasm32"), target_os = "linux"))]
         let backends = wgpu::Backends::VULKAN;
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "linux")))]
         let backends = wgpu::Backends::all();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {

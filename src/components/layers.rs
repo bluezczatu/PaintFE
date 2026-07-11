@@ -13,7 +13,7 @@ use egui::{
 };
 use image::Rgba;
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
+use crate::time_compat::Instant;
 
 const THUMBNAIL_SIZE: u32 = 40;
 const MAX_RECOMMENDED_LAYERS: usize = 200;

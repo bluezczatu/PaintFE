@@ -185,12 +185,17 @@ impl NewFileDialog {
 
         // Slow path: probe system clipboard on a background thread so opening the
         // dialog remains instant even when clipboard providers are sluggish.
-        let (tx, rx) = mpsc::channel();
-        self.clipboard_dims_rx = Some(rx);
-        std::thread::spawn(move || {
-            let dims = crate::ops::clipboard::get_clipboard_image_dimensions();
-            let _ = tx.send(dims);
-        });
+        // Not available on web (no threads) — the system clipboard isn't
+        // reachable from wasm anyway, so this is skipped entirely there.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let (tx, rx) = mpsc::channel();
+            self.clipboard_dims_rx = Some(rx);
+            std::thread::spawn(move || {
+                let dims = crate::ops::clipboard::get_clipboard_image_dimensions();
+                let _ = tx.send(dims);
+            });
+        }
     }
 
     fn sync_inputs_from_values(&mut self) {
@@ -960,13 +965,32 @@ pub fn generate_preview(
             })
         }
         SaveFormat::Webp => {
-            let encoder = webp::Encoder::from_rgba(image.as_raw(), image.width(), image.height());
-            let encoded = if webp_lossless {
-                encoder.encode_lossless()
-            } else {
-                encoder.encode(quality.clamp(1, 100) as f32)
-            };
-            buffer.extend_from_slice(&encoded);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let encoder = webp::Encoder::from_rgba(image.as_raw(), image.width(), image.height());
+                let encoded = if webp_lossless {
+                    encoder.encode_lossless()
+                } else {
+                    encoder.encode(quality.clamp(1, 100) as f32)
+                };
+                buffer.extend_from_slice(&encoded);
+            }
+            // Web fallback: pure-Rust lossless-only WebP encoder (no libwebp).
+            #[cfg(target_arch = "wasm32")]
+            {
+                use image::ImageEncoder;
+                let _ = webp_lossless;
+                let _ = quality;
+                let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut buffer);
+                encoder
+                    .write_image(
+                        image.as_raw(),
+                        image.width(),
+                        image.height(),
+                        image::ExtendedColorType::Rgba8,
+                    )
+                    .ok()?;
+            }
 
             // Decode back
             let decoded = image::load_from_memory(&buffer).ok()?;
@@ -1794,13 +1818,22 @@ impl SaveFileDialog {
                             let save_clicked = ui.add(save_btn).clicked() || enter;
                             if save_clicked {
                                 let full_filename = format!("{}.{}", self.filename, self.format.extension());
-                                let mut dialog = rfd::FileDialog::new()
-                                    .set_file_name(&full_filename)
-                                    .add_filter(self.format.label(), &[self.format.extension()]);
-                                if let Some(dir) = &self.target_directory {
-                                    dialog = dialog.set_directory(dir);
-                                }
-                                if let Some(path) = dialog.save_file() {
+                                // Web has no native save-location picker: downloads always
+                                // go to the browser's default download folder, so we skip
+                                // straight to a virtual path carrying just the file name.
+                                #[cfg(target_arch = "wasm32")]
+                                let picked_path = Some(std::path::PathBuf::from(&full_filename));
+                                #[cfg(not(target_arch = "wasm32"))]
+                                let picked_path = {
+                                    let mut dialog = rfd::FileDialog::new()
+                                        .set_file_name(&full_filename)
+                                        .add_filter(self.format.label(), &[self.format.extension()]);
+                                    if let Some(dir) = &self.target_directory {
+                                        dialog = dialog.set_directory(dir);
+                                    }
+                                    dialog.save_file()
+                                };
+                                if let Some(path) = picked_path {
                                     result = Some(SaveAction {
                                         path,
                                         format: self.format,

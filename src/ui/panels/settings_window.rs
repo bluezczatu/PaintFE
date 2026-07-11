@@ -31,9 +31,15 @@ pub struct SettingsWindow {
     pub rebinding_action: Option<BindableAction>,
     /// Brief status message after theme import/export (cleared on next frame)
     theme_status: Option<(String, f64)>,
+    #[cfg(not(target_arch = "wasm32"))]
     plugin_manager: crate::paintdotnet_plugins::PluginManager,
+    #[cfg(not(target_arch = "wasm32"))]
     plugin_status: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
     pending_trust_plugin: Option<String>,
+    /// Web only: last error from uploading a custom font file, if any.
+    #[cfg(target_arch = "wasm32")]
+    font_upload_error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,7 +49,10 @@ enum SettingsTab {
     Hardware,
     Keybinds,
     AI,
+    #[cfg(not(target_arch = "wasm32"))]
     Plugins,
+    #[cfg(target_arch = "wasm32")]
+    Fonts,
 }
 
 impl Default for SettingsWindow {
@@ -64,9 +73,14 @@ impl Default for SettingsWindow {
             staged_keybindings: KeyBindings::default(),
             rebinding_action: None,
             theme_status: None,
+            #[cfg(not(target_arch = "wasm32"))]
             plugin_manager: crate::paintdotnet_plugins::PluginManager::load(),
+            #[cfg(not(target_arch = "wasm32"))]
             plugin_status: None,
+            #[cfg(not(target_arch = "wasm32"))]
             pending_trust_plugin: None,
+            #[cfg(target_arch = "wasm32")]
+            font_upload_error: None,
         }
     }
 }
@@ -86,9 +100,12 @@ impl SettingsWindow {
         self.onnx_probe_result = None;
         self.staged_keybindings = settings.keybindings.clone();
         self.rebinding_action = None;
-        self.plugin_manager = crate::paintdotnet_plugins::PluginManager::load();
-        self.plugin_status = None;
-        self.pending_trust_plugin = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.plugin_manager = crate::paintdotnet_plugins::PluginManager::load();
+            self.plugin_status = None;
+            self.pending_trust_plugin = None;
+        }
         self.dirty = false;
     }
 
@@ -198,7 +215,7 @@ impl SettingsWindow {
                         ui.set_min_height(available_h);
                         ui.add_space(4.0);
 
-                        let tabs: [(SettingsTab, Icon, String); 6] = [
+                        let tabs: Vec<(SettingsTab, Icon, String)> = vec![
                             (
                                 SettingsTab::General,
                                 Icon::SettingsGeneral,
@@ -219,12 +236,21 @@ impl SettingsWindow {
                                 Icon::SettingsKeybinds,
                                 t!("settings.tab.keybinds"),
                             ),
+                            // AI features (ONNX Runtime, background removal) need
+                            // dynamic library loading, which has no wasm32
+                            // equivalent — hide the tab entirely on web.
+                            #[cfg(not(target_arch = "wasm32"))]
                             (SettingsTab::AI, Icon::SettingsAI, t!("settings.tab.ai")),
+                            #[cfg(not(target_arch = "wasm32"))]
                             (
                                 SettingsTab::Plugins,
                                 Icon::SettingsPlugins,
                                 t!("settings.tab.plugins"),
                             ),
+                            // Font upload / Google Fonts only exist on web —
+                            // desktop already has full OS font-store access.
+                            #[cfg(target_arch = "wasm32")]
+                                (SettingsTab::Fonts, Icon::Text, "Fonts".to_string()),
                         ];
                         for (tab, icon, label) in &tabs {
                             let selected = self.active_tab == *tab;
@@ -314,8 +340,13 @@ impl SettingsWindow {
                                     SettingsTab::AI => {
                                         self.show_ai_tab(ui, settings);
                                     }
+                                    #[cfg(not(target_arch = "wasm32"))]
                                     SettingsTab::Plugins => {
                                         self.show_plugins_tab(ui, settings);
+                                    }
+                                    #[cfg(target_arch = "wasm32")]
+                                    SettingsTab::Fonts => {
+                                        self.show_fonts_tab(ui, ctx);
                                     }
                                 }
                             });
@@ -323,6 +354,7 @@ impl SettingsWindow {
                 });
             });
 
+        #[cfg(not(target_arch = "wasm32"))]
         self.show_plugin_trust_modal(ctx);
 
         self.open = show && !should_close;
@@ -345,6 +377,7 @@ impl SettingsWindow {
         ui.add_space(3.0);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn show_plugins_tab(&mut self, ui: &mut egui::Ui, settings: &mut AppSettings) {
         Self::section_header(ui, &t!("settings.plugins.title"));
         ui.label(
@@ -449,6 +482,7 @@ impl SettingsWindow {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn show_plugin_trust_modal(&mut self, ctx: &egui::Context) {
         let Some(hash) = self.pending_trust_plugin.clone() else {
             return;
@@ -745,6 +779,9 @@ impl SettingsWindow {
             .spacing([16.0, 6.0])
             .show(ui, |ui| {
                 ui.label(egui::RichText::new("Version").strong());
+                #[cfg(target_arch = "wasm32")]
+                ui.label("PaintFE - Web 1.0");
+                #[cfg(not(target_arch = "wasm32"))]
                 ui.label(env!("CARGO_PKG_VERSION"));
                 ui.end_row();
 
@@ -760,6 +797,19 @@ impl SettingsWindow {
                 ui.hyperlink_to("paintfe.com", "https://paintfe.com");
                 ui.end_row();
             });
+        #[cfg(target_arch = "wasm32")]
+        {
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(
+                    "PaintFE - Web is an experimental beta port of the desktop app. \
+                     Some features work differently or aren't available yet, see the \
+                     welcome message for details.",
+                )
+                .small()
+                .weak(),
+            );
+        }
 
         // -- Reset ------------------------------------------------------
         ui.add_space(16.0);
@@ -784,7 +834,16 @@ impl SettingsWindow {
             self.gpu_adapters_receiver = None;
         }
 
+        // GPU adapter enumeration needs a background thread (std::thread::spawn,
+        // unavailable on wasm32) and blocks on an async wgpu call that never
+        // resolves synchronously in the browser sandbox — not available on web.
+        #[cfg(target_arch = "wasm32")]
+        if self.gpu_adapters.is_empty() {
+            self.gpu_adapters = vec!["Auto".to_string()];
+        }
+
         // Kick off background enumeration on first visit (non-blocking)
+        #[cfg(not(target_arch = "wasm32"))]
         if self.gpu_adapters.is_empty() && self.gpu_adapters_receiver.is_none() {
             let (tx, rx) = std::sync::mpsc::channel();
             self.gpu_adapters_receiver = Some(rx);
@@ -872,6 +931,31 @@ impl SettingsWindow {
         settings: &mut AppSettings,
         theme: &mut crate::theme::Theme,
     ) {
+        // Poll the browser file picker for an imported theme file.
+        #[cfg(target_arch = "wasm32")]
+        if let Some((_name, bytes)) =
+            crate::web_bridge::drain_pending("theme_import").into_iter().next()
+        {
+            match String::from_utf8(bytes) {
+                Ok(content) => {
+                    settings.import_theme_from_string(&content);
+                    self.sync_from_settings(settings);
+                    self.dirty = true;
+                    self.apply_theme(settings, theme, ctx);
+                    self.theme_status = Some((
+                        t!("settings.interface.theme_imported"),
+                        ui.input(|i| i.time),
+                    ));
+                }
+                Err(e) => {
+                    self.theme_status = Some((
+                        format!("{}: {e}", t!("settings.interface.theme_error")),
+                        ui.input(|i| i.time),
+                    ));
+                }
+            }
+        }
+
         // -- Theme ----------------------------------------------------
         Self::section_header(ui, &t!("settings.interface.theme_mode"));
         egui::Grid::new("interface_theme_grid")
@@ -1518,6 +1602,15 @@ impl SettingsWindow {
 
             if ui.button(t!("settings.interface.export_theme")).clicked() {
                 let theme_str = settings.export_theme_to_string();
+                #[cfg(target_arch = "wasm32")]
+                {
+                    crate::web_fs::trigger_download("my_theme.paintfe-theme", theme_str.as_bytes());
+                    self.theme_status = Some((
+                        t!("settings.interface.theme_exported"),
+                        ui.input(|i| i.time),
+                    ));
+                }
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("PaintFE Theme", &["paintfe-theme"])
                     .set_file_name("my_theme.paintfe-theme")
@@ -1539,6 +1632,11 @@ impl SettingsWindow {
                     }
                 }
             }
+            #[cfg(target_arch = "wasm32")]
+            if ui.button(t!("settings.interface.import_theme")).clicked() {
+                crate::web_bridge::open_picker("theme_import", ".paintfe-theme,text/plain", false);
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             if ui.button(t!("settings.interface.import_theme")).clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("PaintFE Theme", &["paintfe-theme"])
@@ -1896,6 +1994,7 @@ impl SettingsWindow {
                     .desired_width(field_w)
                     .hint_text(t!("settings.ai.onnx_path_placeholder")),
             );
+            #[cfg(not(target_arch = "wasm32"))]
             if ui.button("\u{1F4C2}").clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("Dynamic Library", &["dll", "so", "dylib"])
@@ -1981,6 +2080,7 @@ impl SettingsWindow {
                     .desired_width(field_w)
                     .hint_text(t!("settings.ai.model_path_placeholder")),
             );
+            #[cfg(not(target_arch = "wasm32"))]
             if ui.button("\u{1F4C2}").clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("ONNX Model", &["onnx"])
@@ -2105,6 +2205,110 @@ impl SettingsWindow {
                     .small()
                     .weak(),
             );
+        }
+    }
+
+    // -- Fonts Tab (web only) ---------------------------------------------
+    #[cfg(target_arch = "wasm32")]
+    fn show_fonts_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Poll the browser file picker for an uploaded font.
+        if let Some((name, bytes)) =
+            crate::web_bridge::drain_pending("font_upload").into_iter().next()
+        {
+            let family = std::path::Path::new(&name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&name)
+                .to_string();
+            match crate::ops::text::custom_fonts::register_from_bytes(family, bytes) {
+                Ok(()) => self.font_upload_error = None,
+                Err(e) => self.font_upload_error = Some(e),
+            }
+        }
+
+        Self::section_header(ui, "UPLOAD A FONT");
+        ui.label(
+            egui::RichText::new(
+                "Browsers can't read your system's installed fonts, so upload a TTF/OTF file \
+                 directly. It becomes available in the Text tool's font list under its file name.",
+            )
+            .small()
+            .weak(),
+        );
+        ui.add_space(4.0);
+        if ui.button("Upload Font File...").clicked() {
+            crate::web_bridge::open_picker("font_upload", ".ttf,.otf,font/ttf,font/otf", false);
+        }
+        if let Some(err) = &self.font_upload_error {
+            ui.add_space(4.0);
+            ui.colored_label(egui::Color32::from_rgb(220, 60, 60), format!("\u{274C} {err}"));
+        }
+
+        Self::section_header(ui, "GOOGLE FONTS");
+        ui.label(
+            egui::RichText::new(
+                "Fetches the font directly from the Google Fonts source repository. No API \
+                 key needed, but it does require an internet connection.",
+            )
+            .small()
+            .weak(),
+        );
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical()
+            .id_salt("google_fonts_list")
+            .max_height(220.0)
+            .show(ui, |ui| {
+                for &(family, slug) in crate::ops::google_fonts::CURATED {
+                    ui.horizontal(|ui| {
+                        ui.label(family);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            match crate::ops::google_fonts::status_of(family) {
+                                Some(crate::ops::google_fonts::FetchStatus::Loading) => {
+                                    ui.add(egui::Spinner::new().size(14.0));
+                                }
+                                Some(crate::ops::google_fonts::FetchStatus::Done) => {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(0, 180, 0),
+                                        "\u{2705} Added",
+                                    );
+                                }
+                                Some(crate::ops::google_fonts::FetchStatus::Failed(e)) => {
+                                    if ui.button("Retry").clicked() {
+                                        crate::ops::google_fonts::fetch(family, slug, ctx.clone());
+                                    }
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(220, 60, 60),
+                                        format!("\u{274C} {e}"),
+                                    );
+                                }
+                                None => {
+                                    if ui.button("Add").clicked() {
+                                        crate::ops::google_fonts::fetch(family, slug, ctx.clone());
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
+            });
+
+        let installed = crate::ops::text::custom_fonts::names();
+        if !installed.is_empty() {
+            Self::section_header(ui, "INSTALLED CUSTOM FONTS");
+            let mut to_remove: Option<String> = None;
+            for name in &installed {
+                ui.horizontal(|ui| {
+                    ui.label(name);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Remove").clicked() {
+                            to_remove = Some(name.clone());
+                        }
+                    });
+                });
+            }
+            if let Some(name) = to_remove {
+                crate::ops::text::custom_fonts::remove(&name);
+            }
         }
     }
 

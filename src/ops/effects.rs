@@ -4,7 +4,7 @@
 
 use crate::canvas::{CanvasState, TiledImage};
 use image::{GrayImage, Rgba, RgbaImage};
-use rayon::prelude::*;
+use crate::par_compat::*;
 
 fn apply_spatial_effect<F>(flat: &RgbaImage, mask: Option<&GrayImage>, processor: F) -> RgbaImage
 where

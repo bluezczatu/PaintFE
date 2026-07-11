@@ -1,7 +1,7 @@
 pub struct FillCommitOverlay {
     pub bounds: (u32, u32, u32, u32),
     pub rgba: Vec<u8>,
-    pub started_at: std::time::Instant,
+    pub started_at: crate::time_compat::Instant,
     pub duration: std::time::Duration,
     pub texture: Option<egui::TextureHandle>,
 }
@@ -250,7 +250,7 @@ impl CanvasState {
         self.fill_commit_overlays.push(FillCommitOverlay {
             bounds,
             rgba,
-            started_at: std::time::Instant::now(),
+            started_at: crate::time_compat::Instant::now(),
             duration,
             texture: None,
         });

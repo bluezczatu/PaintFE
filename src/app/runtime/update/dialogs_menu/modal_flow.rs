@@ -1,5 +1,8 @@
 impl PaintFEApp {
     fn handle_runtime_modal_flow(&mut self, ctx: &egui::Context) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        self.show_welcome_popup_window(ctx);
+
         self.settings_window
             .show(ctx, &mut self.settings, &mut self.theme, &self.assets);
 
@@ -296,7 +299,7 @@ impl PaintFEApp {
                     }
                     self.pending_io_ops += 1;
 
-                    rayon::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
+                    crate::par_compat::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
                         Ok(()) => {
                             let _ = sender.send(IoResult::SaveComplete {
                                 project_index,
@@ -354,7 +357,7 @@ impl PaintFEApp {
                     }
                     self.pending_io_ops += 1;
 
-                    rayon::spawn(move || {
+                    crate::par_compat::spawn(move || {
                         let result = match format {
                             SaveFormat::Gif => crate::io::encode_animated_gif(
                                 &frames, fps, gif_colors, gif_dither, &path,
@@ -408,7 +411,7 @@ impl PaintFEApp {
                     }
                     self.pending_io_ops += 1;
 
-                    rayon::spawn(move || {
+                    crate::par_compat::spawn(move || {
                         match crate::io::encode_prepared_and_write(
                             export_image,
                             &path,
@@ -460,5 +463,161 @@ impl PaintFEApp {
             || self.new_file_dialog.open
             || !matches!(self.active_dialog, ActiveDialog::None)
             || self.pending_paste_request.is_some()
+    }
+
+    /// First-run welcome / beta-disclaimer popup (web only). Shown once per
+    /// browser; dismissal is persisted to localStorage so it never shows
+    /// again on that browser, even across page reloads.
+    #[cfg(target_arch = "wasm32")]
+    fn show_welcome_popup_window(&mut self, ctx: &egui::Context) {
+        if !self.show_welcome_popup {
+            return;
+        }
+        let mut dismiss = false;
+        let colors = &self.theme;
+        let is_mobile = crate::web_storage::is_mobile_device();
+        // Translucent tint of a color (for subtle highlight backgrounds),
+        // independent of the color's own alpha.
+        let tint = |c: egui::Color32, alpha: u8| {
+            egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+        };
+
+        egui::Window::new("welcome_popup")
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .frame(
+                egui::Frame::window(&ctx.global_style())
+                    .fill(colors.window_bg)
+                    .corner_radius(12.0),
+            )
+            .show(ctx, |ui| {
+                ui.set_width(400.0);
+                ui.spacing_mut().item_spacing.y = 0.0;
+
+                // -- Header ------------------------------------------------
+                ui.vertical_centered(|ui| {
+                    ui.add_space(20.0);
+                    ui.label(
+                        egui::RichText::new("PaintFE").strong().size(24.0).color(colors.text_color),
+                    );
+                    ui.add_space(4.0);
+                    egui::Frame::NONE
+                        .fill(tint(colors.accent, 40))
+                        .corner_radius(10.0)
+                        .inner_margin(egui::Margin::symmetric(10, 3))
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new("WEB • VERSION 1.0 • EXPERIMENTAL BETA")
+                                    .size(10.5)
+                                    .strong()
+                                    .color(colors.accent_strong),
+                            );
+                        });
+                    ui.add_space(16.0);
+                });
+
+                ui.separator();
+                ui.add_space(14.0);
+
+                // -- Body ----------------------------------------------------
+                ui.label(
+                    egui::RichText::new(
+                        "Welcome! This is a beta of PaintFE running entirely in your \
+                         browser. Everything you do stays on this device; nothing is \
+                         uploaded anywhere.",
+                    )
+                    .color(colors.text_color),
+                );
+                ui.add_space(10.0);
+                ui.label(
+                    egui::RichText::new(
+                        "A few things work differently here than on desktop: font \
+                         and clipboard access are more limited by browser security, \
+                         and a couple of native only features (RAW camera import, \
+                         printing through the OS) are unavailable or work \
+                         differently. See Settings for details.",
+                    )
+                    .color(colors.text_muted),
+                );
+
+                // -- Mobile notice (only shown if actually on one) -----------
+                if is_mobile {
+                    ui.add_space(14.0);
+                    egui::Frame::NONE
+                        .fill(tint(colors.accent, 30))
+                        .stroke(egui::Stroke::new(1.0, tint(colors.accent, 110)))
+                        .corner_radius(8.0)
+                        .inner_margin(egui::Margin::same(10))
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new("Heads up:")
+                                        .strong()
+                                        .color(colors.accent_strong),
+                                );
+                                ui.label(
+                                    egui::RichText::new(
+                                        "PaintFE - Web is built for a desktop experience \
+                                         (mouse and keyboard, larger screen) and may not \
+                                         work well on a phone or tablet. Mobile support \
+                                         isn't planned.",
+                                    )
+                                    .color(colors.text_color),
+                                );
+                            });
+                        });
+                }
+
+                // -- Desktop upsell -------------------------------------------
+                ui.add_space(14.0);
+                egui::Frame::NONE
+                    .fill(colors.bg2)
+                    .corner_radius(8.0)
+                    .inner_margin(egui::Margin::same(12))
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new("Want the full experience?")
+                                .strong()
+                                .color(colors.text_color),
+                        );
+                        ui.add_space(3.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "The desktop app has full feature access, better \
+                                 performance, and GPU acceleration for filters and \
+                                 effects.",
+                            )
+                            .small()
+                            .color(colors.text_muted),
+                        );
+                        ui.add_space(8.0);
+                        let dl_btn = egui::Button::new(
+                            egui::RichText::new("Download Desktop App")
+                                .strong()
+                                .color(egui::Color32::WHITE),
+                        )
+                        .fill(colors.accent)
+                        .corner_radius(6.0);
+                        if ui.add(dl_btn).clicked() {
+                            crate::ops::open_url_in_new_tab("https://paintfe.com/download.html");
+                        }
+                    });
+
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Got it").clicked() {
+                            dismiss = true;
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+            });
+        if dismiss {
+            self.show_welcome_popup = false;
+            crate::web_storage::mark_welcome_seen();
+        }
     }
 }

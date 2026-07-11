@@ -994,6 +994,7 @@ impl AddBrushTipDialog {
     }
 
     /// Validate the selected file. Returns true if valid.
+    #[cfg(not(target_arch = "wasm32"))]
     fn validate_file(&mut self, path: &std::path::Path) -> bool {
         self.error_message.clear();
         self.valid = false;
@@ -1020,6 +1021,19 @@ impl AddBrushTipDialog {
                 return false;
             }
         };
+
+        self.validate_bytes(data)
+    }
+
+    /// Validate already-in-memory PNG bytes (used on web, where files arrive
+    /// as bytes from the browser's file picker rather than a real path).
+    fn validate_bytes(&mut self, data: Vec<u8>) -> bool {
+        self.error_message.clear();
+        self.valid = false;
+        self.png_data = None;
+        self.preview_texture = None;
+        self.image_width = 0;
+        self.image_height = 0;
 
         // Decode PNG
         match image::load_from_memory(&data) {
@@ -1050,6 +1064,19 @@ impl AddBrushTipDialog {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<AddBrushTipResult> {
         if !self.open {
             return None;
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        if let Some((name, data)) =
+            crate::web_bridge::drain_pending("brush_tip").into_iter().next()
+        {
+            self.selected_path = Some(std::path::PathBuf::from(&name));
+            if self.name.is_empty()
+                && let Some(stem) = std::path::Path::new(&name).file_stem().and_then(|s| s.to_str())
+            {
+                self.name = stem.to_string();
+            }
+            self.validate_bytes(data);
         }
 
         let mut result: Option<AddBrushTipResult> = None;
@@ -1103,6 +1130,7 @@ impl AddBrushTipDialog {
                     ui.add_sized([250.0, 22.0], egui::Label::new(
                         egui::RichText::new(path_text).size(12.0).color(colors.text_muted)
                     ));
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Browse...").clicked()
                         && let Some(path) = rfd::FileDialog::new()
                             .add_filter("PNG Image", &["png"])
@@ -1116,6 +1144,10 @@ impl AddBrushTipDialog {
                         {
                             self.name = stem.to_string();
                         }
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    if ui.button("Browse...").clicked() {
+                        crate::web_bridge::open_picker("brush_tip", "image/png", false);
                     }
                 });
                 ui.add_space(6.0);
@@ -1276,13 +1308,14 @@ impl AddShapeDialog {
         self.error_message.clear();
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn validate_file(&mut self, ctx: &egui::Context, path: &std::path::Path) {
-        self.error_message.clear();
-        self.valid = false;
-        self.svg_path_data = None;
-        self.preview_texture = None;
         let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_default();
         if ext != "svg" {
+            self.error_message.clear();
+            self.valid = false;
+            self.svg_path_data = None;
+            self.preview_texture = None;
             self.error_message = "Only SVG files are supported.".to_string();
             return;
         }
@@ -1293,7 +1326,17 @@ impl AddShapeDialog {
                 return;
             }
         };
-        let path_data = match crate::ops::shapes::extract_svg_path_data(&text)
+        self.validate_text(ctx, &text);
+    }
+
+    /// Validate already-in-memory SVG text (used on web, where files arrive
+    /// as bytes from the browser's file picker rather than a real path).
+    fn validate_text(&mut self, ctx: &egui::Context, text: &str) {
+        self.error_message.clear();
+        self.valid = false;
+        self.svg_path_data = None;
+        self.preview_texture = None;
+        let path_data = match crate::ops::shapes::extract_svg_path_data(text)
             .and_then(|d| crate::ops::shapes::parse_custom_shape("Preview", "Custom", &d).map(|_| d))
         {
             Ok(d) => d,
@@ -1317,6 +1360,23 @@ impl AddShapeDialog {
         if !self.open {
             return None;
         }
+
+        #[cfg(target_arch = "wasm32")]
+        if let Some((name, data)) =
+            crate::web_bridge::drain_pending("custom_shape").into_iter().next()
+        {
+            self.selected_path = Some(std::path::PathBuf::from(&name));
+            if self.name.is_empty()
+                && let Some(stem) = std::path::Path::new(&name).file_stem().and_then(|s| s.to_str())
+            {
+                self.name = stem.to_string();
+            }
+            match String::from_utf8(data) {
+                Ok(text) => self.validate_text(ctx, &text),
+                Err(_) => self.error_message = "File is not valid UTF-8 text.".to_string(),
+            }
+        }
+
         let mut result = None;
         let colors = super::DialogColors::from_ctx(ctx);
         egui::Window::new("dialog_add_shape")
@@ -1341,6 +1401,7 @@ impl AddShapeDialog {
                 ui.horizontal(|ui| {
                     let path_text = self.selected_path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("No file selected");
                     ui.add_sized([250.0, 22.0], egui::Label::new(egui::RichText::new(path_text).size(12.0).color(colors.text_muted)));
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Browse...").clicked()
                         && let Some(path) = rfd::FileDialog::new().add_filter("SVG Shape", &["svg"]).pick_file()
                     {
@@ -1352,17 +1413,29 @@ impl AddShapeDialog {
                             self.name = stem.to_string();
                         }
                     }
+                    #[cfg(target_arch = "wasm32")]
+                    if ui.button("Browse...").clicked() {
+                        crate::web_bridge::open_picker("custom_shape", ".svg,image/svg+xml", false);
+                    }
+                    let example_svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100">
+  <path d="M 0 -48 L 45.65 -14.83 L 28.21 38.83 L -28.21 38.83 L -45.65 -14.83 Z"/>
+</svg>
+"#;
+                    #[cfg(target_arch = "wasm32")]
+                    if ui.button("Export example...").clicked() {
+                        crate::web_fs::trigger_download(
+                            "paintfe_pentagon_shape.svg",
+                            example_svg.as_bytes(),
+                        );
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Export example...").clicked()
                         && let Some(path) = rfd::FileDialog::new()
                             .set_file_name("paintfe_pentagon_shape.svg")
                             .add_filter("SVG Shape", &["svg"])
                             .save_file()
                     {
-                        let example = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100">
-  <path d="M 0 -48 L 45.65 -14.83 L 28.21 38.83 L -28.21 38.83 L -45.65 -14.83 Z"/>
-</svg>
-"#;
-                        if let Err(e) = std::fs::write(&path, example) {
+                        if let Err(e) = std::fs::write(&path, example_svg) {
                             self.error_message = format!("Cannot write example: {e}");
                         }
                     }

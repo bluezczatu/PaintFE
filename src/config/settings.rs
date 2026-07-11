@@ -235,6 +235,13 @@ impl Default for AppSettings {
     fn default() -> Self {
         let preset = ThemePreset::Signal;
         Self {
+            // Web has no persisted settings file (no real filesystem), so
+            // `default()` runs fresh every session — making this the
+            // effective permanent default there. Desktop keeps Light as
+            // its long-standing default; web starts in Dark instead.
+            #[cfg(target_arch = "wasm32")]
+            theme_mode: ThemeMode::Dark,
+            #[cfg(not(target_arch = "wasm32"))]
             theme_mode: ThemeMode::Light,
             theme_preset: preset,
             custom_accent: preset.accent_colors(),
@@ -807,6 +814,7 @@ impl AppSettings {
 
     /// Save settings to disk
     pub fn save(&self) {
+        #[cfg(not(target_arch = "wasm32"))]
         let Some(path) = Self::settings_path() else {
             return;
         };
@@ -1218,6 +1226,7 @@ impl AppSettings {
                 content.push_str(&format!("{}={}\n", key, Self::color_to_str(*c)));
             }
         }
+        #[cfg(not(target_arch = "wasm32"))]
         if let Err(e) = std::fs::write(&path, &content) {
             eprintln!(
                 "[PaintFE] Failed to save settings to {}: {}",
@@ -1225,14 +1234,26 @@ impl AppSettings {
                 e
             );
         }
+        #[cfg(target_arch = "wasm32")]
+        if let Err(error) = crate::web_storage::save_settings(&content) {
+            web_sys::console::warn_1(&format!("PaintFE: {error}").into());
+        }
     }
 
     /// Load settings from disk (returns default if file missing or corrupt)
     pub fn load() -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        let content = {
         let Some(path) = Self::settings_path() else {
             return Self::default();
         };
         let Ok(content) = std::fs::read_to_string(&path) else {
+            return Self::default();
+        };
+            content
+        };
+        #[cfg(target_arch = "wasm32")]
+        let Some(content) = crate::web_storage::load_settings() else {
             return Self::default();
         };
 

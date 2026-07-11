@@ -100,7 +100,7 @@ impl PaintFEApp {
         }
         self.filter_status_description = description.clone();
         self.pending_filter_jobs += 1;
-        rayon::spawn(move || {
+        crate::par_compat::spawn(move || {
             let result_flat = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 // Check cancellation before starting expensive work
                 if cancel

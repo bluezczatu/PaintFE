@@ -1522,11 +1522,11 @@ pub fn execute_script(
     sender: std::sync::mpsc::Sender<ScriptMessage>,
 ) {
     let sender_clone = sender.clone();
-    rayon::spawn(move || {
-        let start = std::time::Instant::now();
+    crate::par_compat::spawn(move || {
+        let start = crate::time_compat::Instant::now();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let rng_seed = {
-                use std::time::SystemTime;
+                use crate::time_compat::SystemTime;
                 let t = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap_or_default();
@@ -1743,7 +1743,7 @@ pub fn execute_script_sync(
     let (dummy_tx, _dummy_rx) = std::sync::mpsc::channel::<ScriptMessage>();
 
     let rng_seed = {
-        use std::time::SystemTime;
+        use crate::time_compat::SystemTime;
         let t = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default();

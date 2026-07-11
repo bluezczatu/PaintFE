@@ -187,10 +187,45 @@ impl PaintFEApp {
     /// Handle opening one or more files - creates a new project tab for each.
     /// Uses multi-select file dialog so Linux/Wayland users can open multiple files
     /// without relying on drag-and-drop.
+    #[cfg(target_arch = "wasm32")]
+    fn handle_open_file(&mut self, _current_time: f64) {
+        crate::web_bridge::trigger_open_picker();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn handle_open_file(&mut self, current_time: f64) {
         let paths = self.file_handler.pick_file_paths();
         for path in paths {
             self.open_file_by_path(path, current_time);
+        }
+    }
+
+    /// Poll files selected via the browser file picker (async — reads finish
+    /// on a later frame) and open each one, dispatching by extension exactly
+    /// like `open_file_by_path` does for native paths.
+    #[cfg(target_arch = "wasm32")]
+    fn poll_web_open_picker(&mut self) {
+        for (name, bytes) in crate::web_bridge::drain_pending_opens() {
+            let is_pfe = name.to_lowercase().ends_with(".pfe");
+            if is_pfe {
+                let path = std::path::PathBuf::from(&name);
+                match crate::io::load_pfe_from_bytes(&bytes) {
+                    Ok(canvas_state) => {
+                        let _ = self
+                            .io_sender
+                            .send(IoResult::PfeLoaded { canvas_state, path });
+                    }
+                    Err(e) => {
+                        let _ = self.io_sender.send(IoResult::LoadFailed {
+                            path: Some(path),
+                            error: format!("Failed to open project: {}", e),
+                        });
+                    }
+                }
+                self.pending_io_ops += 1;
+            } else {
+                self.open_image_from_bytes(&bytes, Some(name));
+            }
         }
     }
 
@@ -229,7 +264,7 @@ impl PaintFEApp {
                 self.io_ops_start_time = Some(current_time);
             }
             self.pending_io_ops += 1;
-            rayon::spawn(move || match crate::io::load_pfe(&path) {
+            crate::par_compat::spawn(move || match crate::io::load_pfe(&path) {
                 Ok(canvas_state) => {
                     let _ = sender.send(IoResult::PfeLoaded { canvas_state, path });
                 }
@@ -241,6 +276,8 @@ impl PaintFEApp {
                 }
             });
         } else if is_pdn {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
             let sender = self.io_sender.clone();
             if self.pending_io_ops == 0 {
                 self.io_ops_start_time = Some(current_time);
@@ -257,6 +294,14 @@ impl PaintFEApp {
                     });
                 }
             });
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = self.io_sender.send(IoResult::LoadFailed {
+                    path: Some(path),
+                    error: "Paint.NET project import is unavailable in the browser".to_string(),
+                });
+            }
         } else {
             // Open as flat image on background thread (decode + tile in parallel)
             // Check for animated GIF/APNG first
@@ -265,7 +310,7 @@ impl PaintFEApp {
                 self.io_ops_start_time = Some(current_time);
             }
             self.pending_io_ops += 1;
-            rayon::spawn(move || {
+            crate::par_compat::spawn(move || {
                 let ext = path
                     .extension()
                     .map(|e| e.to_string_lossy().to_lowercase())
@@ -467,7 +512,7 @@ impl PaintFEApp {
                         self.io_ops_start_time = Some(current_time);
                     }
                     self.pending_io_ops += 1;
-                    rayon::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
+                    crate::par_compat::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
                         Ok(()) => {
                             let _ = sender.send(IoResult::SaveComplete {
                                 project_index: idx,
@@ -515,7 +560,7 @@ impl PaintFEApp {
                     self.io_ops_start_time = Some(current_time);
                 }
                 self.pending_io_ops += 1;
-                rayon::spawn(move || {
+                crate::par_compat::spawn(move || {
                     let result = match format {
                         SaveFormat::Gif => crate::io::encode_animated_gif(
                             &frames, fps, gif_colors, gif_dither, &path,
@@ -565,7 +610,7 @@ impl PaintFEApp {
                     self.io_ops_start_time = Some(current_time);
                 }
                 self.pending_io_ops += 1;
-                rayon::spawn(move || {
+                crate::par_compat::spawn(move || {
                     match crate::io::encode_prepared_and_write(
                         export_image,
                         &path,
@@ -660,7 +705,7 @@ impl PaintFEApp {
                     self.io_ops_start_time = Some(current_time);
                 }
                 self.pending_io_ops += 1;
-                rayon::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
+                crate::par_compat::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
                     Ok(()) => {
                         let _ = sender.send(IoResult::SaveComplete {
                             project_index: idx,
@@ -707,7 +752,7 @@ impl PaintFEApp {
                 self.io_ops_start_time = Some(current_time);
             }
             self.pending_io_ops += 1;
-            rayon::spawn(move || {
+            crate::par_compat::spawn(move || {
                 let result = match format {
                     SaveFormat::Gif => {
                         crate::io::encode_animated_gif(&frames, fps, gif_colors, gif_dither, &path)
@@ -755,7 +800,7 @@ impl PaintFEApp {
                 self.io_ops_start_time = Some(current_time);
             }
             self.pending_io_ops += 1;
-            rayon::spawn(move || {
+            crate::par_compat::spawn(move || {
                 match crate::io::encode_prepared_and_write(
                     export_image,
                     &path,

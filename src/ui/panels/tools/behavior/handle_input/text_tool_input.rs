@@ -44,6 +44,19 @@ impl ToolsPanel {
                 let escape_pressed = escape_pressed_global;
                 let ctrl_enter =
                     ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
+                // Handle-grab checks below use `canvas_pos_unclamped`, which maps
+                // the pointer to canvas space unconditionally (so handles remain
+                // grabbable when dragged off-canvas) — but that means a press on
+                // the top dock/context bar can coincidentally land "near" a handle
+                // that's scrolled/zoomed into a similar screen position, and get
+                // misread as a handle grab instead of a UI click. Require the
+                // press to actually be within the canvas viewport on screen (a
+                // signal `is_pointer_over_egui()` can't give here, since it
+                // doesn't reliably detect panel content sharing the canvas's
+                // Background z-order).
+                let press_over_canvas_viewport = ui
+                    .input(|i| i.pointer.interact_pos())
+                    .is_some_and(|p| canvas_rect.contains(p));
 
                 // Sync effects changes from UI panel to the text layer
                 if self.text_state.text_effects_dirty && self.text_state.editing_text_layer {
@@ -311,6 +324,7 @@ impl ToolsPanel {
                 if is_primary_pressed
                     && self.text_state.is_editing
                     && self.text_state.text_box_drag.is_none()
+                    && press_over_canvas_viewport
                     && let (Some(pos_f), Some(hp)) = (canvas_pos_unclamped, handle_canvas_pos)
                 {
                     let dx = (pos_f.0 - hp.0) * zoom;
@@ -434,6 +448,7 @@ impl ToolsPanel {
                     && !self.text_state.dragging_handle
                     && self.text_state.text_box_drag.is_none()
                     && self.text_state.editing_text_layer
+                    && press_over_canvas_viewport
                     && let Some(pos_f) = canvas_pos_unclamped
                     && let Some(origin) = self.text_state.origin
                 {
@@ -1471,6 +1486,29 @@ impl ToolsPanel {
                 let allow_text_capture = !self.text_state.font_popup_open
                     && (canvas_has_focus || !ui.ctx().egui_wants_keyboard_input());
                 if self.text_state.is_editing && allow_text_capture {
+                    // Tell egui's web backend where the caret is so it can
+                    // move/focus the hidden `<input>` element that bridges
+                    // real browser keyboard/IME events into `Event::Text`.
+                    // Without this, typed characters never reach `events`
+                    // below on web (native routes keys directly and doesn't
+                    // need it).
+                    if let Some(origin) = self.text_state.origin {
+                        let font_size = self.text_state.font_size.max(8.0);
+                        let screen_x = canvas_rect.min.x + origin[0] * zoom;
+                        let screen_y = canvas_rect.min.y + origin[1] * zoom;
+                        let ime_rect = egui::Rect::from_min_size(
+                            egui::pos2(screen_x, screen_y),
+                            egui::vec2((font_size * zoom).max(1.0), (font_size * zoom).max(1.0)),
+                        );
+                        ui.ctx().output_mut(|o| {
+                            o.ime = Some(egui::output::IMEOutput {
+                                rect: ime_rect,
+                                cursor_rect: ime_rect,
+                                should_interrupt_composition: false,
+                            });
+                        });
+                    }
+
                     let events: Vec<egui::Event> = ui.input(|i| i.events.clone());
                     let shift_held = ui.input(|i| i.modifiers.shift);
                     let ctrl_held = ui.input(|i| i.modifiers.command);

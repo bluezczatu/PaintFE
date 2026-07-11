@@ -6,3 +6,6 @@
 # (undisclosed software dependencies).
 [target.'cfg(target_os = "windows")']
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]

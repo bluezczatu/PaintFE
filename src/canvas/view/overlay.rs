@@ -915,7 +915,7 @@ impl Canvas {
         state: &mut CanvasState,
         ctx: &egui::Context,
     ) {
-        let now = std::time::Instant::now();
+        let now = crate::time_compat::Instant::now();
         state.fill_commit_overlays.retain_mut(|overlay| {
             let elapsed = now.saturating_duration_since(overlay.started_at);
             if elapsed >= overlay.duration {

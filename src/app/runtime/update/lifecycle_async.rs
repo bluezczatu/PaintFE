@@ -72,7 +72,7 @@ impl PaintFEApp {
         {
             let interval_secs = (self.settings.auto_save_minutes as u64) * 60;
             if interval_secs > 0 && self.last_autosave.elapsed().as_secs() >= interval_secs {
-                self.last_autosave = std::time::Instant::now();
+                self.last_autosave = crate::time_compat::Instant::now();
                 if let Some(dir) = crate::io::autosave_dir() {
                     let _ = std::fs::create_dir_all(&dir);
                     for project in &self.projects {
@@ -91,7 +91,7 @@ impl PaintFEApp {
                         let path = dir.join(format!("{}.autosave.pfe", safe_name));
                         let pfe_data = crate::io::build_pfe(&project.canvas_state);
                         let proj_name = project.name.clone();
-                        rayon::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
+                        crate::par_compat::spawn(move || match crate::io::write_pfe(&pfe_data, &path) {
                             Ok(()) => {
                                 crate::logger::write(
                                     "INFO",
@@ -337,6 +337,10 @@ impl PaintFEApp {
         if self.script_editor.is_running {
             ctx.request_repaint();
         }
+
+        // --- Poll files selected via the browser file picker (web only) ---
+        #[cfg(target_arch = "wasm32")]
+        self.poll_web_open_picker();
 
         // --- Poll async IO results (image load / save) ---
         while let Ok(result) = self.io_receiver.try_recv() {
