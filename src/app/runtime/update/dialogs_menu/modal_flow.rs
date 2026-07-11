@@ -459,7 +459,13 @@ impl PaintFEApp {
             }
         }
 
-        self.save_file_dialog.open
+        #[cfg(target_arch = "wasm32")]
+        let welcome_open = self.show_welcome_popup;
+        #[cfg(not(target_arch = "wasm32"))]
+        let welcome_open = false;
+
+        welcome_open
+            || self.save_file_dialog.open
             || self.new_file_dialog.open
             || !matches!(self.active_dialog, ActiveDialog::None)
             || self.pending_paste_request.is_some()
@@ -479,7 +485,13 @@ impl PaintFEApp {
         // Translucent tint of a color (for subtle highlight backgrounds),
         // independent of the color's own alpha.
         let tint = |c: egui::Color32, alpha: u8| {
-            egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+            let scale = |channel: u8| (channel as u16 * alpha as u16 / 255) as u8;
+            egui::Color32::from_rgba_premultiplied(
+                scale(c.r()),
+                scale(c.g()),
+                scale(c.b()),
+                alpha,
+            )
         };
 
         egui::Window::new("welcome_popup")

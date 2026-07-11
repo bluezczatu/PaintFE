@@ -21,5 +21,8 @@ PaintFE.code-workspace
 # Local-only HTML files
 *.local.html
 
+# Local-only web launcher
+/run-web.bat
+
 # Test failure artifacts (diffs, actual outputs)
 tests/output/

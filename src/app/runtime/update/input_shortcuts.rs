@@ -70,7 +70,12 @@ impl PaintFEApp {
         self.handle_file_uri_paste_events(ctx);
 
         // Determine if a modal dialog is open — block all shortcuts and canvas interaction.
-        let modal_open = self.save_file_dialog.open
+        #[cfg(target_arch = "wasm32")]
+        let welcome_open = self.show_welcome_popup;
+        #[cfg(not(target_arch = "wasm32"))]
+        let welcome_open = false;
+        let modal_open = welcome_open
+            || self.save_file_dialog.open
             || self.new_file_dialog.open
             || !matches!(self.active_dialog, ActiveDialog::None)
             || self.pending_paste_request.is_some();
