@@ -86,7 +86,7 @@ impl PaintFEApp {
             let mut do_save = false;
             let mut do_discard = false;
             let mut do_cancel = false;
-            egui::Window::new("Unsaved Changes")
+            let unsaved_changes_window = egui::Window::new("Unsaved Changes")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -125,6 +125,9 @@ impl PaintFEApp {
                         }
                     });
                 });
+            if let Some(response) = unsaved_changes_window {
+                self.remember_ui_cursor_rect(response.response.rect);
+            }
             if do_save {
                 self.open_save_as_for_project(close_idx);
                 self.pending_close_index = None;
@@ -150,7 +153,7 @@ impl PaintFEApp {
             let mut do_exit = false;
             let mut do_cancel = false;
 
-            egui::Window::new("Exit PaintFE")
+            let exit_window = egui::Window::new("Exit PaintFE")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -243,6 +246,9 @@ impl PaintFEApp {
                         });
                     }
                 });
+            if let Some(response) = exit_window {
+                self.remember_ui_cursor_rect(response.response.rect);
+            }
 
             if do_save {
                 let current_time = ctx.input(|i| i.time);
