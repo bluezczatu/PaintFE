@@ -80,9 +80,7 @@
     <div class="subtitle" id="paintfe-loading-status">Loading… (experimental beta)</div>
   </div>
   <canvas id="the_canvas_id"></canvas>
-  <link data-trunk rel="rust" data-wasm-opt="0" />
-  <link data-trunk rel="copy-file" href="../assets/icons/app_icon.png" />
-  <script type="module">
+  <script>
     window.addEventListener("error", (e) => console.error("windowerror", e.message));
     window.addEventListener("unhandledrejection", (e) => console.error("unhandled", e.reason));
 
@@ -103,5 +101,7 @@
       }
     });
   </script>
+  <link data-trunk rel="rust" data-wasm-opt="0" />
+  <link data-trunk rel="copy-file" href="../assets/icons/app_icon.png" />
 </body>
 </html>

@@ -6,3 +6,8 @@
 # reload constantly and destabilized live testing.
 [watch]
 ignore = ["dist", "target"]
+
+# The static site hosts the application beneath /online/. Keep generated WASM
+# and JavaScript URLs under that path instead of the domain root.
+[build]
+public_url = "/online/"

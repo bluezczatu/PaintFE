@@ -1058,11 +1058,11 @@ pub fn generate_preview(
             let mut cursor = Cursor::new(&mut buffer);
             let encoder = TiffEncoder::new(&mut cursor);
             encoder
-                .encode(
+                .write_image(
                     image.as_raw(),
                     image.width(),
                     image.height(),
-                    image::ColorType::Rgba8.into(),
+                    image::ExtendedColorType::Rgba8,
                 )
                 .ok()?;
 
