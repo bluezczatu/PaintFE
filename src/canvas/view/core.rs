@@ -328,7 +328,10 @@ impl Canvas {
             let needs_reupload_only =
                 filter_changed && !pixels_dirty && !state.composite_cpu_buffer.is_empty();
 
-            if pixels_dirty && has_visible_adjustment {
+            // Browser WebGPU readback completion is asynchronous to the
+            // eframe frame loop. Keep web presentation on the CPU composite
+            // path so imported and committed layers are uploaded reliably.
+            if pixels_dirty && (has_visible_adjustment || cfg!(target_arch = "wasm32")) {
                 gpu.async_readback.cancel_pending();
                 let composite = state.composite();
                 let mut pixels = Vec::with_capacity((state.width * state.height) as usize);
